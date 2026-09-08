@@ -3,7 +3,7 @@ chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V29 - PERFECT CENTER)
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V31)
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods"
@@ -291,7 +291,7 @@ function Show-DetectionBox {
 function Test-Administrator { return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }
 
 # ============================================================
-# MÓDULOS DE ESCANEO [1 al 13]
+# MÓDULOS DE ESCANEO
 # ============================================================
 function Start-FullModScan {
     Show-Header "ANÁLISIS AVANZADO DE MODS (MEOW MOD ANALYZER)"
@@ -320,7 +320,6 @@ function Start-DoomsdayMemoryScan {
 }
 
 function Start-SystemScan {
-    $todayStr = (Get-Date).ToString("yyyy-MM-dd")
     Show-Header "INTERVENCIÓN RÁPIDA (PREFETCH Y BAM)"
     if (-not (Test-Administrator)) { Write-Host "     [!] Se requieren privilegios de Administrador para leer BAM."; Pause-Scanner; return }
     $hallazgosAlertas = [System.Collections.Generic.List[string]]::new()
@@ -457,7 +456,8 @@ function Start-WinRCommands {
     $rutas = @(
         [PSCustomObject]@{ Id=1; Cmd="C:\`$Recycle.bin"; Desc="Papelera" },
         [PSCustomObject]@{ Id=2; Cmd="regedit"; Desc="Registro" },
-        [PSCustomObject]@{ Id=3; Cmd="C:\Windows\Prefetch"; Desc="Prefetch" }
+        [PSCustomObject]@{ Id=3; Cmd="C:\Windows\Prefetch"; Desc="Prefetch" },
+        [PSCustomObject]@{ Id=4; Cmd="cmd.exe"; Desc="Consola CMD" }
     )
     foreach ($r in $rutas) { Write-Host "     [$($r.Id)] $($r.Cmd) ➜ $($r.Desc)" -ForegroundColor Yellow }
     $choice = (Read-Host "`n     [COMANDO] ID (o 0 salir)").Trim()
@@ -466,6 +466,8 @@ function Start-WinRCommands {
         if ($sel) {
             if ($sel.Cmd -eq "regedit") {
                 Start-Process "regedit"
+            } elseif ($sel.Cmd -eq "cmd.exe") {
+                Start-Process "cmd.exe"
             } else {
                 Start-Process "explorer.exe" $sel.Cmd
             }
@@ -474,7 +476,7 @@ function Start-WinRCommands {
 }
 
 # ============================================================
-# MENÚ PRINCIPAL PERFECTAMENTE CENTRADO Y ALINEADO (MASTER V30)
+# MENÚ PRINCIPAL
 # ============================================================
 function Show-MainMenu {
 
