@@ -463,7 +463,13 @@ function Start-WinRCommands {
     $choice = (Read-Host "`n     [COMANDO] ID (o 0 salir)").Trim()
     if ($choice -ne "0") {
         $sel = $rutas | Where-Object { $_.Id.ToString() -eq $choice }
-        if ($sel) { Start-Process ($sel.Cmd -eq "regedit" ? "regedit" : "explorer.exe") $sel.Cmd }
+        if ($sel) {
+            if ($sel.Cmd -eq "regedit") {
+                Start-Process "regedit"
+            } else {
+                Start-Process "explorer.exe" $sel.Cmd
+            }
+        }
     }
 }
 
