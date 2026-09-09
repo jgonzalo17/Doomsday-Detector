@@ -3,7 +3,7 @@ chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V34 - STRICT AUDIT)
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V35 - COLOR AUDIT)
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods"
@@ -22,6 +22,8 @@ $script:IllegalKeywords = @(
     "meteor", "wurst", "aristois", "bleachhack", "mathax", "liquidbounce", 
     "raven", "vape", "novoline", "flux", "impact", "inertia", "kami", "krypton"
 )
+
+$script:RegexHacks = ($script:IllegalKeywords -join "|")
 
 $script:WindowsServices = @("dps", "appinfo", "pcasvc", "eventlog", "sysmain", "dusmsvc", "bam")
 
@@ -252,7 +254,6 @@ function Show-DetectionBox {
         Write-Host "     ║ No se detectaron anomalías en este escaneo.                  ║" -ForegroundColor Green
     } else {
         foreach ($item in $Detections) {
-            # Se permite más longitud si es necesario, pero truncamos visualmente a 56 caracteres para no romper el recuadro
             $displayStr = $item
             if ($displayStr.Length -gt 56) { $displayStr = $displayStr.Substring(0, 53) + "..." }
             $itemStr = (" > " + $displayStr).PadRight(60, ' ')
@@ -261,7 +262,6 @@ function Show-DetectionBox {
     }
     Write-Host "     ╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Red
     
-    # Imprimir rutas completas debajo del recuadro para no romperlo visualmente
     if ($Detections.Count -gt 0) {
         Write-Host "`n     [LOG COMPLETO DE RUTAS DETECTADAS]" -ForegroundColor DarkGray
         foreach ($item in $Detections) {
@@ -305,7 +305,6 @@ function Start-SystemScan {
     Show-Header "INTERVENCIÓN RÁPIDA (PREFETCH / EJECUCIONES DE HOY)"
     if (-not (Test-Administrator)) { Write-Host "     [!] Se requieren privilegios de Administrador para ver Prefetch."; Pause-Scanner; return }
     
-    # Evaluar Estado de Prefetch
     try {
         $pfVal = Get-ItemPropertyValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters" -Name "EnablePrefetcher" -ErrorAction SilentlyContinue
         if ($pfVal -eq 0) { Write-Host "     [*] Motor Prefetch: DESHABILITADO (Sospechoso/Borrado)" -ForegroundColor Red }
@@ -316,7 +315,6 @@ function Start-SystemScan {
     $hallazgos = [System.Collections.Generic.List[string]]::new()
     $list = @()
     
-    # Obtener prefetch de las últimas 24 hrs, ordenar por hora descendente, tomar los 30 primeros
     $pfFiles = Get-ChildItem -Path "C:\Windows\Prefetch" -Filter "*.pf" -ErrorAction SilentlyContinue
     if ($pfFiles) {
         $pfFiles | Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-1) } | 
@@ -326,8 +324,8 @@ function Start-SystemScan {
         
         foreach ($item in $list) {
             $timeStr = $item.Time.ToString("HH:mm:ss")
-            if ($item.Name.ToLower() -match "click|autoclick|macro|jclicker|ghost|meteor|totem|vape|dooms|inject") {
-                $hallazgos.Add(">> [ALERTA] [$timeStr] $($item.Name) - te vas ban")
+            if ($item.Name.ToLower() -match $script:RegexHacks) {
+                $hallazgos.Add(">> [ALERTA HACK] [$timeStr] $($item.Name) - TE VAS BAN")
             } else {
                 $hallazgos.Add("[$timeStr] $($item.Name)")
             }
@@ -347,8 +345,8 @@ function Start-RecycleBinScan {
         $shell = New-Object -ComObject Shell.Application
         $papelera = $shell.NameSpace(10)
         foreach ($item in $papelera.Items()) {
-            if ($item.Name.ToLower() -match "click|macro|ghost|meteor|totem|vape|dooms") { 
-                $hallazgosPapelera.Add(">> [HACK BORRADO] $($item.Name) - te vas ban") 
+            if ($item.Name.ToLower() -match $script:RegexHacks) { 
+                $hallazgosPapelera.Add(">> [HACK BORRADO] $($item.Name) - TE VAS BAN") 
             } else {
                 $hallazgosPapelera.Add("[ELIMINADO] $($item.Name)")
             }
@@ -449,8 +447,8 @@ function Start-FullDiskScan {
         $recPath = "$drive`$Recycle.Bin\$sid"
         if (Test-Path $recPath) {
             Get-ChildItem -Path $recPath -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-                if ($_.Name -match "clicker|autoclick|ghost|meteor|wurst|vape|raven|dooms|inject") {
-                    $hallazgosDisco.Add("[BORRADO-HACK] te vas ban | Ruta: $($_.FullName)")
+                if ($_.Name -match $script:RegexHacks) {
+                    $hallazgosDisco.Add("[BORRADO-HACK] TE VAS BAN | Ruta: $($_.FullName)")
                 } else {
                     $hallazgosDisco.Add("[BORRADO] $($_.Name) | Ruta: $($_.FullName)")
                 }
@@ -459,11 +457,10 @@ function Start-FullDiskScan {
     }
 
     Write-Host "     [*] Escaneando ejecutables/mods modificados en las últimas 48 hrs..." -ForegroundColor DarkGray
-    $regexHacks = "clicker|autoclick|ghost|meteor|wurst|vape|raven|dooms|inject"
     Get-ChildItem -Path "C:\Users" -Recurse -File -Include "*.jar","*.exe","*.bat" -ErrorAction SilentlyContinue | 
     Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-2) } | ForEach-Object {
-        if ($_.Name -match $regexHacks) {
-            $hallazgosDisco.Add("[MODIFICADO-HACK] te vas ban | Ruta: $($_.FullName)")
+        if ($_.Name -match $script:RegexHacks) {
+            $hallazgosDisco.Add("[MODIFICADO-HACK] TE VAS BAN | Ruta: $($_.FullName)")
         } else {
             $hallazgosDisco.Add("[MODIFICADO] $($_.Name) | Ruta: $($_.FullName)")
         }
@@ -508,7 +505,7 @@ function Start-AdvancedAutoclickScan {
         Write-Host "     [*] Rastreando el disco $drive (Esto tomará algo de tiempo)..." -ForegroundColor DarkGray
         Get-ChildItem -Path $drive -Recurse -File -Include "*.exe","*.jar","*.bat","*.ahk","*.vbs","*.py","*.dll" -ErrorAction SilentlyContinue | 
         Where-Object { $_.Name -match $regexNames } | ForEach-Object {
-            $hallazgos.Add("[AUTOCLICK DETECTADO] te vas ban | Ruta: $($_.FullName)")
+            $hallazgos.Add("[AUTOCLICK DETECTADO] TE VAS BAN | Ruta: $($_.FullName)")
         }
     }
     
@@ -517,42 +514,101 @@ function Start-AdvancedAutoclickScan {
 }
 
 function Start-ExtremeModScan {
-    Show-Header "ANÁLISIS EXTREMO DE MODS E INSTANCIAS"
+    Show-Header "ANÁLISIS EXTREMO (PROCESOS, INSTANCIAS Y MODS)"
     if (-not (Test-Administrator)) { Write-Host "     [!] Se requiere Administrador."; Pause-Scanner; return }
     
     $hallazgos = [System.Collections.Generic.List[string]]::new()
+    $allProcs = Get-Process -ErrorAction SilentlyContinue
+
+    # =========================================================
+    # 1. SEPARACIÓN DE PROCESOS (MC vs HACKS vs NORMALES)
+    # =========================================================
+    Write-Host "`n     [====== SEPARACIÓN DE PROCESOS ======]" -ForegroundColor Cyan
     
-    # 1. Instancias de Java y módulos en memoria
-    Write-Host "     [*] Escaneando JVM e instancias activas en memoria..." -ForegroundColor DarkGray
-    $javaProcs = Get-Process -Name "java", "javaw", "lunarclient" -ErrorAction SilentlyContinue
-    if ($javaProcs) {
-        foreach ($proc in $javaProcs) {
-            # Java siempre en verde
-            Write-Host "     [+] [INSTANCIA] Minecraft/Java corriendo (PID: $($proc.Id))" -ForegroundColor Green
+    $mcProcs = $allProcs | Where-Object { $_.Name -match "java|javaw|lunarclient|craft" }
+    $badProcs = $allProcs | Where-Object { $_.Name -match $script:RegexHacks }
+    $otherProcs = $allProcs | Where-Object { $_.Name -notmatch "java|javaw|lunarclient|craft" -and $_.Name -notmatch $script:RegexHacks }
+
+    if ($mcProcs) {
+        Write-Host "     [INSTANCIAS DE JUEGO / MC]" -ForegroundColor Green
+        foreach ($proc in $mcProcs) {
+            Write-Host "     [+] $($proc.Name).exe (PID: $($proc.Id)) - CORRIENDO" -ForegroundColor Green
             try {
-                $proc.Modules | Where-Object { $_.FileName -match "vape|ghost|clicker|inject|jnativehook|killaura|autoclick|macro" } | ForEach-Object {
-                    # Hacks inyectados en rojo y mostrando la ruta exacta
-                    Write-Host "     [!] [PELIGRO - HACK INYECTADO] $($_.ModuleName) - te vas ban" -ForegroundColor Red
-                    Write-Host "         Ruta de instancia: $($_.FileName)" -ForegroundColor Red
-                    $hallazgos.Add("[INYECCIÓN EN RAM] $($_.ModuleName) - te vas ban | Ruta: $($_.FileName)")
+                $proc.Modules | Where-Object { $_.FileName -match $script:RegexHacks } | ForEach-Object {
+                    Write-Host "         [!] HACK INYECTADO: $($_.ModuleName) - TE VAS BAN" -ForegroundColor Red
+                    Write-Host "         [!] Ruta de la inyección: $($_.FileName)" -ForegroundColor Red
+                    $hallazgos.Add("[INYECCIÓN EN RAM] $($_.ModuleName) - TE VAS BAN | Ruta: $($_.FileName)")
                 }
             } catch {}
         }
     } else {
-        Write-Host "     [-] [INSTANCIA] No se detectó Minecraft/Java en ejecución actualmente." -ForegroundColor DarkGray
+        Write-Host "     [-] No se detectaron instancias de Minecraft o Java." -ForegroundColor White
     }
 
-    # 2. Modificaciones de Papelera (listar archivos exactos con rutas)
-    Write-Host "     [*] Auditando archivos ocultos y eliminados de Papelera..." -ForegroundColor DarkGray
+    if ($badProcs) {
+        Write-Host "`n     [PROCESOS HACK / AUTOCLICKS EXTERNOS]" -ForegroundColor Red
+        foreach ($proc in $badProcs) {
+            Write-Host "     [!] $($proc.Name).exe (PID: $($proc.Id)) - TE VAS BAN" -ForegroundColor Red
+            $hallazgos.Add("[PROCESO HACK] $($proc.Name).exe - TE VAS BAN")
+        }
+    } else {
+        Write-Host "`n     [+] Ningún proceso externo catalogado como Hack." -ForegroundColor White
+    }
+
+    Write-Host "`n     [PROCESOS DEL SISTEMA]" -ForegroundColor White
+    Write-Host "     [*] Analizando $($otherProcs.Count) procesos normales en segundo plano... (Blancos/Limpios)" -ForegroundColor White
+
+
+    # =========================================================
+    # 2. ESCANEO DE MODS EN CARPETA (LEGALES VS ILEGALES)
+    # =========================================================
+    Write-Host "`n     [====== ANÁLISIS DE MODS (.JAR) ======]" -ForegroundColor Cyan
+    if (Test-Path $script:DefaultModsPath) {
+        $modFiles = Get-ChildItem -Path $script:DefaultModsPath -Recurse -File -Include "*.jar", "*.zip", "*.dll"
+        if ($modFiles.Count -gt 0) {
+            foreach ($mod in $modFiles) {
+                $isBad = $false
+                if ($mod.Name.ToLower() -match $script:RegexHacks) { $isBad = $true }
+                if ($mod.LastWriteTime -gt $mod.CreationTime.AddDays(7)) { $isBad = $true }
+                if ($mod.Length -lt 15KB) { $isBad = $true }
+
+                if ($isBad) {
+                    Write-Host "     [!] MOD ILEGAL O MODIFICADO: $($mod.Name) -> TE VAS BAN" -ForegroundColor Red
+                    $hallazgos.Add("[MOD ILEGAL] $($mod.Name) | Ruta: $($mod.FullName)")
+                } else {
+                    Write-Host "     [+] MOD LEGAL: $($mod.Name) -> Aprobado" -ForegroundColor Green
+                }
+            }
+        } else {
+            Write-Host "     [-] La carpeta de mods está vacía." -ForegroundColor White
+        }
+    } else {
+        Write-Host "     [-] No se encontró carpeta de mods en AppData." -ForegroundColor White
+    }
+
+
+    # =========================================================
+    # 3. PAPELERA DE RECICLAJE
+    # =========================================================
+    Write-Host "`n     [====== PAPELERA DE RECICLAJE ======]" -ForegroundColor Cyan
     try {
         $shell = New-Object -ComObject Shell.Application
         $papelera = $shell.NameSpace(10)
-        foreach ($item in $papelera.Items()) {
-            $hallazgos.Add("[PAPELERA] Nombre: $($item.Name) | Ruta Original: $($item.Path)")
+        if ($papelera.Items().Count -gt 0) {
+            foreach ($item in $papelera.Items()) {
+                if ($item.Name.ToLower() -match $script:RegexHacks) {
+                    Write-Host "     [!] BORRADO HACK: $($item.Name) -> TE VAS BAN" -ForegroundColor Red
+                    $hallazgos.Add("[PAPELERA HACK] $($item.Name) | Ruta Original: $($item.Path)")
+                } else {
+                    Write-Host "     [-] BORRADO NORMAL: $($item.Name)" -ForegroundColor White
+                }
+            }
+        } else {
+            Write-Host "     [-] La papelera de reciclaje está vacía." -ForegroundColor White
         }
     } catch {}
 
-    Show-DetectionBox -Detections $hallazgos -Title "ALERTAS Y HALLAZGOS DEL ESCÁNER EXTREMO"
+    Show-DetectionBox -Detections $hallazgos -Title "RESULTADOS DE INSTANCIAS, MODS Y PAPELERA"
     Pause-Scanner
 }
 
