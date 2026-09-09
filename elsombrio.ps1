@@ -3,7 +3,7 @@ chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V35 - COLOR AUDIT)
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V41 - COLOR PREFETCH & SKULL)
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods"
@@ -24,6 +24,43 @@ $script:IllegalKeywords = @(
 )
 
 $script:RegexHacks = ($script:IllegalKeywords -join "|")
+
+# ------------------------------------------------------------
+# LISTA UNIFICADA Y AMPLIADA DE MACROS / AUTOCLICKERS
+# ------------------------------------------------------------
+$script:MacroAutoclickCritical = @(
+    "autoclicker", "auto-clicker", "auto_click", "autoclick", "clickbot", "click-bot",
+    "gsautoclick", "gs auto clicker", "opautoclick", "op auto clicker",
+    "jitbit", "murgee", "tinytask", "freeautoclicker", "free auto clicker",
+    "automouseclick", "auto mouse click", "mouserecorder", "robomouse",
+    "macrorecorder", "macro-recorder", "macro_recorder", "macro creator",
+    "pulover", "pulovers macro",
+    "autohotkey", "ahk_", "\.ahk", "autoit", "\.au3",
+    "logitech gaming software", "lghub", "g hub", "razer synapse", "synapse3", "synapse2",
+    "icue", "corsair icue", "steelseries engine", "bloody7", "a4tech", "redragon"
+)
+$script:RegexMacroCritical = ($script:MacroAutoclickCritical -join "|")
+
+$script:MacroAutoclickSuspect = @(
+    "clickspeed", "click-speed", "fastclick", "fast-click", "clicklock", "clickr",
+    "multiclicker", "hydraclicker", "clickmachine", "neoclicker", "advancedclicker",
+    "leftclickrepeater", "clickrepeater", "speedclicker", "clickyclicky", "perfectautomate",
+    "doitagain", "do it again", "orion macro", "quick macros", "quickmacros",
+    "automationanywhere", "x-mouse", "xbutton", "xmousebuttoncontrol"
+)
+$script:RegexMacroSuspect = ($script:MacroAutoclickSuspect -join "|")
+
+$script:PathWhitelistPatterns = "site-packages|dist-packages|\\lib\\python|\\Lib\\|\\venv\\|\\\.venv\\|\\conda\\|node_modules|\\Scripts\\|pydevd"
+
+# ------------------------------------------------------------
+# OPTIMIZACIÓN: Regex precompilados
+# ------------------------------------------------------------
+$script:RxOpts = [System.Text.RegularExpressions.RegexOptions]'IgnoreCase, Compiled'
+$script:RxHacks           = [regex]::new($script:RegexHacks, $script:RxOpts)
+$script:RxMacroCritical   = [regex]::new($script:RegexMacroCritical, $script:RxOpts)
+$script:RxMacroSuspect    = [regex]::new($script:RegexMacroSuspect, $script:RxOpts)
+$script:RxPathWhitelist   = [regex]::new($script:PathWhitelistPatterns, $script:RxOpts)
+$script:RxMcProcess       = [regex]::new("java|javaw|lunarclient|craft", $script:RxOpts)
 
 $script:WindowsServices = @("dps", "appinfo", "pcasvc", "eventlog", "sysmain", "dusmsvc", "bam")
 
@@ -195,77 +232,94 @@ function Show-BootAnimation {
         }
 
         $stepIndex = [math]::Min([math]::Floor($i / 3), $bootSteps.Count - 1)
-        Write-Host "`n [Bootloader] $($bootSteps[$stepIndex])" -ForegroundColor Cyan
+        Write-Host "`n       [Bootloader] $($bootSteps[$stepIndex])" -ForegroundColor Cyan
         
         $pct = [math]::Round((($i + 1) / 15) * 100)
-        $barLength = 30
+        $barLength = 40
         $filled = [math]::Round(($pct / 100) * $barLength)
         $empty = $barLength - $filled
         $progressBar = "█" * $filled + "▒" * $empty
         
-        Write-Host " [System]     $pct% [$progressBar]" -ForegroundColor Magenta
+        Write-Host "       [System]     $pct% [$progressBar]" -ForegroundColor Magenta
         Start-Sleep -Milliseconds 120
     }
-    Write-Host "`n [OK] INTERFAZ LISTA. TODOS LOS MÓDULOS CARGADOS Y SEGUROS.`n" -ForegroundColor Green
+    Write-Host "`n       [OK] INTERFAZ LISTA. TODOS LOS MÓDULOS CARGADOS Y SEGUROS.`n" -ForegroundColor Green
     Start-Sleep -Milliseconds 500
 }
 
 function Show-Banner {
     Clear-Host
     $banner = @"
-    ███████╗ ██████╗ ███╗   ███╗██████╗ ██████╗ ██╗ ██████╗
-    ██╔════╝██╔═══██╗████╗ ████║██╔══██╗██╔══██╗██║██╔═══██╗
-    ███████╗██║   ██║██╔████╔██║██████╔╝██████╔╝██║██║   ██║
-    ╚════██║██║   ██║██║╚██╔╝██║██╔══██╗██╔══██╗██║██║   ██║
-    ███████║╚██████╔╝██║ ╚═╝ ██║██████╔╝██║  ██║██║╚██████╔╝
-    ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚═╝ ╚═════╝
+       ███████╗ ██████╗ ███╗   ███╗██████╗ ██████╗ ██╗ ██████╗
+       ██╔════╝██╔═══██╗████╗ ████║██╔══██╗██╔══██╗██║██╔═══██╗
+       ███████╗██║   ██║██╔████╔██║██████╔╝██████╔╝██║██║   ██║
+       ╚════██║██║   ██║██║╚██╔╝██║██╔══██╗██╔══██╗██║██║   ██║
+       ███████║╚██████╔╝██║ ╚═╝ ██║██████╔╝██║  ██║██║╚██████╔╝
+       ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚═╝ ╚═════╝
 "@
     Write-Host $banner -ForegroundColor Blue
-    Write-Host "                [ ADVANCED FORENSIC SCANNER ]                `n" -ForegroundColor DarkGray
+    Write-Host "                   [ ADVANCED FORENSIC SCANNER ]                `n" -ForegroundColor DarkGray
 }
 
 function Show-Header {
     param([string]$Subtitle)
     Clear-Host
-    Write-Host "`n     ╔══════════════════════════════════════════════════════════════╗" -ForegroundColor DarkBlue
-    Write-Host "     ║               EL SOMBRIO IF - FORENSIC SCANNER               ║" -ForegroundColor Cyan
-    Write-Host "     ╠══════════════════════════════════════════════════════════════╣" -ForegroundColor DarkBlue
-    $pad = [math]::Max(0, [math]::Floor((60 - $Subtitle.Length) / 2))
-    $str = ((' ' * $pad) + $Subtitle).PadRight(60, ' ')
-    Write-Host ("     ║{0}║" -f $str) -ForegroundColor White
-    Write-Host "     ╚══════════════════════════════════════════════════════════════╝" -ForegroundColor DarkBlue
-    Write-Host ""
+    Write-Host "`n       ╔═══════════════════════════════════════════════════════════════════════╗" -ForegroundColor DarkBlue
+    Write-Host "       ║                  EL SOMBRIO IF - FORENSIC SCANNER                     ║" -ForegroundColor Cyan
+    Write-Host "       ╠═══════════════════════════════════════════════════════════════════════╣" -ForegroundColor DarkBlue
+    $pad = [math]::Max(0, [math]::Floor((71 - $Subtitle.Length) / 2))
+    $str = ((' ' * $pad) + $Subtitle).PadRight(71, ' ')
+    Write-Host ("       ║{0}║" -f $str) -ForegroundColor White
+    Write-Host "       ╚═══════════════════════════════════════════════════════════════════════╝`n" -ForegroundColor DarkBlue
 }
 
 function Pause-Scanner {
-    Write-Host "`n"
-    Invoke-Typewriter "     [ Presiona ENTER para regresar al menú principal ]" -Speed 10 -Color DarkGray
+    Write-Host "`n       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    Invoke-Typewriter "       [ Presiona ENTER para regresar al menú principal ]" -Speed 10 -Color DarkGray
     Read-Host | Out-Null
 }
 
 function Show-DetectionBox {
-    param([array]$Detections, [string]$Title)
-    Write-Host "`n     ╔══════════════════════════════════════════════════════════════╗" -ForegroundColor Red
-    $pad = [math]::Max(0, [math]::Floor((60 - $Title.Length) / 2))
-    $str = ((' ' * $pad) + $Title).PadRight(60, ' ')
-    Write-Host "     ║$str║" -ForegroundColor Red
-    Write-Host "     ╠══════════════════════════════════════════════════════════════╣" -ForegroundColor Red
+    param([array]$Detections, [string]$Title, [bool]$IsDanger = $false)
+    $borderColor = if ($IsDanger -or ($Detections | Where-Object { $_ -match "HACK|TE VAS BAN|ILEGAL" })) { "Red" } else { "DarkGray" }
+    
+    Write-Host "`n       ╔═══════════════════════════════════════════════════════════════════════╗" -ForegroundColor $borderColor
+    $pad = [math]::Max(0, [math]::Floor((71 - $Title.Length) / 2))
+    $str = ((' ' * $pad) + $Title).PadRight(71, ' ')
+    Write-Host "       ║$str║" -ForegroundColor Yellow
+    Write-Host "       ╠═══════════════════════════════════════════════════════════════════════╣" -ForegroundColor $borderColor
+    
     if ($Detections.Count -eq 0) {
-        Write-Host "     ║ No se detectaron anomalías en este escaneo.                  ║" -ForegroundColor Green
+        Write-Host "       ║ No se detectaron anomalías en este escaneo.                           ║" -ForegroundColor Green
     } else {
         foreach ($item in $Detections) {
             $displayStr = $item
-            if ($displayStr.Length -gt 56) { $displayStr = $displayStr.Substring(0, 53) + "..." }
-            $itemStr = (" > " + $displayStr).PadRight(60, ' ')
-            Write-Host "     ║$itemStr║" -ForegroundColor Yellow
+            $idx = $displayStr.IndexOf(" | Ruta:")
+            if ($idx -ge 0) { $displayStr = $displayStr.Substring(0, $idx) }
+            if ($displayStr.Length -gt 67) { $displayStr = $displayStr.Substring(0, 64) + "..." }
+            $itemStr = (" > " + $displayStr).PadRight(71, ' ')
+            
+            # Lógica de Color Dinámica (Verde para Normal, Rojo para Hacks, Cian para Java)
+            $textColor = "Yellow"
+            if ($item -match "HACK|TE VAS BAN|ILEGAL|PELIGRO") { $textColor = "Red" }
+            elseif ($item -match "\[JAVA\]|java\.exe|javaw\.exe|lunarclient") { $textColor = "Cyan" }
+            elseif ($item -match "\[NORMAL\]|\[ELIMINADO\]|APROBADO") { $textColor = "Green" }
+            
+            Write-Host "       ║$itemStr║" -ForegroundColor $textColor
         }
     }
-    Write-Host "     ╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Red
+    Write-Host "       ╚═══════════════════════════════════════════════════════════════════════╝" -ForegroundColor $borderColor
     
     if ($Detections.Count -gt 0) {
-        Write-Host "`n     [LOG COMPLETO DE RUTAS DETECTADAS]" -ForegroundColor DarkGray
-        foreach ($item in $Detections) {
-            Write-Host "     $item" -ForegroundColor Gray
+        Write-Host "`n       [ ❖ ] LOG DETALLADO Y RUTAS:" -ForegroundColor Cyan
+        Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+        foreach ($item in $Detections) { 
+            # Mismos colores para el registro detallado inferior
+            $textColor = "Gray"
+            if ($item -match "HACK|TE VAS BAN|ILEGAL|PELIGRO") { $textColor = "Red" }
+            elseif ($item -match "\[JAVA\]|java\.exe|javaw\.exe|lunarclient") { $textColor = "Cyan" }
+            elseif ($item -match "\[NORMAL\]|\[ELIMINADO\]|APROBADO") { $textColor = "Green" }
+            Write-Host "       -> $item" -ForegroundColor $textColor 
         }
     }
 }
@@ -277,64 +331,63 @@ function Test-Administrator { return ([Security.Principal.WindowsPrincipal][Secu
 # ============================================================
 function Start-FullModScan {
     Show-Header "ANÁLISIS AVANZADO DE MODS (MEOW MOD ANALYZER)"
-    if (-not (Test-Administrator)) { Write-Host "     [!] Se requiere Administrador."; Pause-Scanner; return }
+    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     try {
         Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
         $url = "https://raw.githubusercontent.com/MeowTonynoh/MeowModAnalyzer/main/MeowModAnalyzer.ps1"
         $scriptContent = Invoke-RestMethod -Uri $url -UseBasicParsing
         $scriptBlock = [ScriptBlock]::Create($scriptContent)
         & $scriptBlock
-    } catch { Write-Host "`n     [!] Error: $($_.Exception.Message)" -ForegroundColor Red }
+    } catch { Write-Host "`n       [!] Error: $($_.Exception.Message)" -ForegroundColor Red }
     Pause-Scanner
 }
 
 function Start-DoomsdayMemoryScan {
     Show-Header "DETECCIÓN PROFUNDA (DOOMSDAY DETECTOR)"
-    if (-not (Test-Administrator)) { Write-Host "     [!] Se requiere Administrador."; Pause-Scanner; return }
+    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     try {
         Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
         $url = "https://raw.githubusercontent.com/zedoonvm1/powershell-scripts/refs/heads/main/DoomsDayDetector.ps1"
         $scriptContent = Invoke-RestMethod -Uri $url -UseBasicParsing
         $scriptBlock = [ScriptBlock]::Create($scriptContent)
         & $scriptBlock
-    } catch { Write-Host "`n     [!] Error: $($_.Exception.Message)" -ForegroundColor Red }
+    } catch { Write-Host "`n       [!] Error: $($_.Exception.Message)" -ForegroundColor Red }
     Pause-Scanner
 }
 
 function Start-SystemScan {
-    Show-Header "INTERVENCIÓN RÁPIDA (PREFETCH / EJECUCIONES DE HOY)"
-    if (-not (Test-Administrator)) { Write-Host "     [!] Se requieren privilegios de Administrador para ver Prefetch."; Pause-Scanner; return }
-    
+    Show-Header "INTERVENCIÓN RÁPIDA (PREFETCH Y BAM)"
+    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador para leer Prefetch."; Pause-Scanner; return }
+    Write-Host "       [ ❖ ] ESTADO DEL MOTOR PREFETCH" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
     try {
         $pfVal = Get-ItemPropertyValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters" -Name "EnablePrefetcher" -ErrorAction SilentlyContinue
-        if ($pfVal -eq 0) { Write-Host "     [*] Motor Prefetch: DESHABILITADO (Sospechoso/Borrado)" -ForegroundColor Red }
-        elseif ($pfVal -eq 3) { Write-Host "     [*] Motor Prefetch: HABILITADO (Normal)" -ForegroundColor Green }
-        else { Write-Host "     [*] Motor Prefetch: MODIFICADO (Valor: $pfVal)" -ForegroundColor Yellow }
-    } catch { Write-Host "     [*] Motor Prefetch: NO SE PUDO LEER ESTADO" -ForegroundColor Yellow }
-
+        if ($pfVal -eq 0) { Write-Host "       [!] ESTADO: DESHABILITADO (Altamente Sospechoso / Evidencia Borrada)" -ForegroundColor Red }
+        elseif ($pfVal -eq 3) { Write-Host "       [+] ESTADO: HABILITADO (Normal y Funcionando)" -ForegroundColor Green }
+        else { Write-Host "       [*] ESTADO: MODIFICADO (Valor inusual: $pfVal)" -ForegroundColor Yellow }
+    } catch { Write-Host "       [*] ESTADO: NO SE PUDO LEER" -ForegroundColor Yellow }
+    Write-Host ""
     $hallazgos = [System.Collections.Generic.List[string]]::new()
     $list = @()
-    
     $pfFiles = Get-ChildItem -Path "C:\Windows\Prefetch" -Filter "*.pf" -ErrorAction SilentlyContinue
     if ($pfFiles) {
         $pfFiles | Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-1) } | 
-        ForEach-Object { $list += [PSCustomObject]@{ Time = $_.LastWriteTime; Name = $_.Name; FullName = $_.FullName } }
-        
+        ForEach-Object { $list += [PSCustomObject]@{ Time = $_.LastWriteTime; Name = $_.Name } }
         $list = $list | Sort-Object Time -Descending | Select-Object -First 30
-        
         foreach ($item in $list) {
             $timeStr = $item.Time.ToString("HH:mm:ss")
-            if ($item.Name.ToLower() -match $script:RegexHacks) {
-                $hallazgos.Add(">> [ALERTA HACK] [$timeStr] $($item.Name) - TE VAS BAN")
+            if ($script:RxHacks.IsMatch($item.Name)) {
+                $hallazgos.Add("[HACK - TE VAS BAN] HORA: $timeStr -> $($item.Name)")
+            } elseif ($script:RxMcProcess.IsMatch($item.Name)) {
+                $hallazgos.Add("[JAVA] HORA: $timeStr -> $($item.Name)")
             } else {
-                $hallazgos.Add("[$timeStr] $($item.Name)")
+                $hallazgos.Add("[NORMAL] HORA: $timeStr -> $($item.Name)")
             }
         }
     } else {
-         $hallazgos.Add("[!] Carpeta Prefetch vacía o bloqueada.")
+         $hallazgos.Add("[!] La carpeta Prefetch está completamente vacía o el acceso fue denegado.")
     }
-    
-    Show-DetectionBox -Detections $hallazgos -Title "ÚLTIMOS 30 EJECUTADOS (MÁS RECIENTE A ANTIGUO)"
+    Show-DetectionBox -Detections $hallazgos -Title "ÚLTIMAS 30 EJECUCIONES (MÁS RECIENTES)"
     Pause-Scanner
 }
 
@@ -345,8 +398,8 @@ function Start-RecycleBinScan {
         $shell = New-Object -ComObject Shell.Application
         $papelera = $shell.NameSpace(10)
         foreach ($item in $papelera.Items()) {
-            if ($item.Name.ToLower() -match $script:RegexHacks) { 
-                $hallazgosPapelera.Add(">> [HACK BORRADO] $($item.Name) - TE VAS BAN") 
+            if ($script:RxHacks.IsMatch($item.Name)) { 
+                $hallazgosPapelera.Add("[HACK BORRADO - TE VAS BAN] $($item.Name) | Ruta: $($item.Path)") 
             } else {
                 $hallazgosPapelera.Add("[ELIMINADO] $($item.Name)")
             }
@@ -356,16 +409,75 @@ function Start-RecycleBinScan {
     Pause-Scanner
 }
 
-function Start-MacroAudit {
-    Show-Header "AUDITORÍA DE MACROS Y PERIFÉRICOS"
-    $hallazgosMacros = [System.Collections.Generic.List[string]]::new()
-    $pathsToCheck = @(
-        "$env:USERPROFILE\AppData\Local\Logitech\Logitech Gaming Software\settings.json",
-        "$env:USERPROFILE\AppData\Local\LGHUB\settings.db",
-        "C:\Program Files (x86)\Bloody7\Bloody7\Data\Mouse\English\ScriptsMacros\GunLib\"
+function Start-MacroAutoclickScan {
+    Show-Header "AUDITORÍA UNIFICADA: MACROS Y AUTOCLICKERS"
+    $hallazgos = [System.Collections.Generic.List[string]]::new()
+
+    Write-Host "       [ ❖ ] FASE 1: SOFTWARE DE MACROS/PERIFÉRICOS INSTALADO" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    $knownPaths = @(
+        @{ Path = "$env:USERPROFILE\AppData\Local\Logitech\Logitech Gaming Software\settings.json"; Name = "Logitech Gaming Software" },
+        @{ Path = "$env:USERPROFILE\AppData\Local\LGHUB\settings.db"; Name = "Logitech G HUB" },
+        @{ Path = "C:\Program Files (x86)\Bloody7\Bloody7\Data\Mouse\English\ScriptsMacros\GunLib\"; Name = "Bloody Macro Suite" },
+        @{ Path = "$env:ProgramFiles\Razer\Synapse3\Config"; Name = "Razer Synapse 3" },
+        @{ Path = "${env:ProgramFiles(x86)}\Razer\Synapse2\Config"; Name = "Razer Synapse 2" },
+        @{ Path = "$env:ProgramFiles\Corsair\CORSAIR iCUE Software"; Name = "Corsair iCUE" },
+        @{ Path = "${env:ProgramFiles(x86)}\SteelSeries\SteelSeries Engine 3"; Name = "SteelSeries Engine" },
+        @{ Path = "$env:APPDATA\AutoHotkey"; Name = "AutoHotkey (config/scripts)" },
+        @{ Path = "$env:USERPROFILE\Documents\Pulover's Macro Creator"; Name = "Pulover's Macro Creator" },
+        @{ Path = "$env:LOCALAPPDATA\TinyTask"; Name = "TinyTask" }
     )
-    foreach ($p in $pathsToCheck) { if (Test-Path $p) { $hallazgosMacros.Add("Detectado: $(Split-Path $p -Leaf) | Ruta: $p") } }
-    Show-DetectionBox -Detections $hallazgosMacros -Title "SOFTWARE DE MACROS DETECTADO"
+    foreach ($kp in $knownPaths) {
+        if (Test-Path $kp.Path) {
+            $hallazgos.Add("[SOFTWARE MACRO INSTALADO] $($kp.Name) | Ruta: $($kp.Path)")
+            Write-Host "       [!] Detectado: $($kp.Name)" -ForegroundColor Yellow
+        }
+    }
+    Write-Host "       [*] Fase 1 completa.`n" -ForegroundColor White
+
+    Write-Host "       [ ❖ ] FASE 2: PROCESOS ACTIVOS EN MEMORIA" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    $activeProcs = Get-Process -ErrorAction SilentlyContinue | Where-Object { $script:RxMacroCritical.IsMatch($_.Name) }
+    if ($activeProcs) {
+        foreach ($proc in $activeProcs) {
+            Write-Host "       [!] Proceso activo: $($proc.Name).exe (PID: $($proc.Id)) - TE VAS BAN" -ForegroundColor Red
+            $hallazgos.Add("[PROCESO ACTIVO - TE VAS BAN] $($proc.Name).exe (PID: $($proc.Id)) | Ruta: Memoria (Activo)")
+        }
+    } else {
+        Write-Host "       [+] Ningún proceso de macro/autoclick corriendo actualmente." -ForegroundColor Green
+    }
+    Write-Host "       [*] Fase 2 completa.`n" -ForegroundColor White
+
+    Write-Host "       [ ❖ ] FASE 3: ESCANEO PROFUNDO DE DISCO" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | Select-Object -ExpandProperty Root
+
+    $allDirs = @()
+    foreach ($drive in $drives) {
+        $allDirs += Get-ChildItem -Path $drive -Directory -ErrorAction SilentlyContinue
+    }
+    $totalDirs = $allDirs.Count
+    $dirCount = 0
+
+    foreach ($dir in $allDirs) {
+        $dirCount++
+        $pct = if ($totalDirs -gt 0) { [math]::Round(($dirCount / $totalDirs) * 100) } else { 100 }
+        $barLength = 40; $filled = [math]::Round(($pct / 100) * $barLength); $pBar = "█" * $filled + "▒" * ($barLength - $filled)
+        Write-Host "`r       [*] Escaneando Sistema [$pBar] $pct% " -NoNewline -ForegroundColor Magenta
+
+        Get-ChildItem -Path $dir.FullName -Recurse -File -Include "*.exe","*.jar","*.bat","*.ahk","*.au3","*.vbs","*.py","*.dll","*.ps1" -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            if ($script:RxMacroCritical.IsMatch($_.Name)) {
+                $hallazgos.Add("[MACRO/AUTOCLICK DETECTADO - TE VAS BAN] $($_.Name) | Ruta: $($_.FullName)")
+            }
+            elseif (-not $script:RxPathWhitelist.IsMatch($_.FullName) -and $script:RxMacroSuspect.IsMatch($_.Name)) {
+                $hallazgos.Add("[ARCHIVO SOSPECHOSO - REVISAR] $($_.Name) | Ruta: $($_.FullName)")
+            }
+        }
+    }
+    Write-Host "`n       [*] Fase 3 completa.`n" -ForegroundColor White
+
+    Show-DetectionBox -Detections $hallazgos -Title "RESULTADOS: MACROS Y AUTOCLICKERS (COMPLETO)"
     Pause-Scanner
 }
 
@@ -373,25 +485,148 @@ function Start-DiffKiller {
     Show-Header "FINALIZADOR DE PROCESOS OCULTOS (DIFF)"
     $forbidden = @("obs","obs32","obs64","discord","streamlabs","bandicam","sharex","gamebar")
     $detected = @()
+    Write-Host "       [ ❖ ] BUSCANDO APLICACIONES DE CAPTURA EN SEGUNDO PLANO..." -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
     foreach ($proc in Get-Process -ErrorAction SilentlyContinue) {
-        if ($forbidden -contains $proc.Name.ToLower()) { $detected += $proc.Name; Write-Host "     [!] Proceso detectado: $($proc.Name)" -ForegroundColor Yellow }
+        if ($forbidden -contains $proc.Name.ToLower()) { 
+            $detected += $proc.Name
+            Write-Host "       [!] Proceso detectado: $($proc.Name)" -ForegroundColor Yellow 
+        }
     }
-    if ($detected.Count -gt 0 -and (Read-Host "`n     ¿Forzar cierre? (S/N)").ToUpper() -eq "S") {
-        foreach ($name in $detected) { Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force }
+    if ($detected.Count -gt 0) {
+        $ans = (Read-Host "`n       [?] ¿Deseas forzar el cierre de todas estas aplicaciones? (S/N)").ToUpper()
+        if ($ans -eq "S") {
+            foreach ($name in $detected) { Get-Process -Name $name -ErrorAction SilentlyContinue | Stop-Process -Force }
+            Write-Host "       [+] Procesos finalizados con éxito." -ForegroundColor Green
+        }
+    } else {
+        Write-Host "       [+] No se encontraron aplicaciones de grabación ocultas." -ForegroundColor Green
     }
+    Pause-Scanner
+}
+
+# ------------------------------------------------------------
+# EASTER EGG: EL DOXEO TROLL CON CALAVERA
+# ------------------------------------------------------------
+function Invoke-Screamer {
+    $origBG = $Host.UI.RawUI.BackgroundColor
+    $origFG = $Host.UI.RawUI.ForegroundColor
+
+    $Host.UI.RawUI.BackgroundColor = "Black"
+    $Host.UI.RawUI.ForegroundColor = "Green"
+    Clear-Host
+
+    Write-Host "`n [!] ADVERTENCIA: INICIANDO VULNERACIÓN DE SISTEMA..." -ForegroundColor Red
+    Start-Sleep -Seconds 1
+    Write-Host " [+] Bypass de firewall completado..." -ForegroundColor Green
+    Start-Sleep -Milliseconds 600
+    Write-Host " [+] Extrayendo credenciales de red y tokens de Discord..." -ForegroundColor Yellow
+    Start-Sleep -Milliseconds 800
+
+    # Lluvia de IP y Hex falsos
+    for ($i = 0; $i -lt 150; $i++) {
+        $randIP = "$((Get-Random -Min 11 -Max 255)).$((Get-Random -Min 0 -Max 255)).$((Get-Random -Min 0 -Max 255)).$((Get-Random -Min 1 -Max 255))"
+        $randHex = -join ((48..57) + (65..70) | Get-Random -Count 8 | % {[char]$_})
+        $randPort = Get-Random -Min 1024 -Max 65535
+        Write-Host " [DATA] IP_TARGET: $randIP | PORT: $randPort | HASH: $randHex | BYTES: $((Get-Random -Min 1000 -Max 99999))"
+        Start-Sleep -Milliseconds 10
+    }
+
+    Write-Host "`n [+] Volcando historial de navegación de C:\Users\$env:USERNAME\ ..." -ForegroundColor Yellow
+    for ($i = 0; $i -lt 30; $i++) {
+        $fakePaths = @(
+            "C:\Users\$env:USERNAME\AppData\Local\Google\Chrome\User Data\Default\Login Data",
+            "C:\Users\$env:USERNAME\AppData\Roaming\Discord\Local Storage\leveldb\",
+            "C:\Users\$env:USERNAME\Documents\contraseñas.txt",
+            "C:\Users\$env:USERNAME\Pictures\Camera Roll\",
+            "C:\Users\$env:USERNAME\Downloads\archivos_privados.zip"
+        )
+        $path = $fakePaths | Get-Random
+        Write-Host " [UPLOAD] Cifrando y enviando: $path -> PAQUETE_$((Get-Random -Min 100 -Max 999))" -ForegroundColor Cyan
+        Start-Sleep -Milliseconds 40
+    }
+
+    # Pantallazo Rojo Final con Calavera
+    $Host.UI.RawUI.BackgroundColor = "Red"
+    $Host.UI.RawUI.ForegroundColor = "Black"
+    Clear-Host
+
+    try { [console]::Beep(1500, 800) } catch {}
+
+    Write-Host @"
+
+                   .▄▄████████████▄▄.
+                .▄████████████████████▄.
+               ██████████████████████████
+              ████████████████████████████
+              ████████████████████████████
+              ████▀▀▀▀████████████▀▀▀▀████
+              ███      ██████████      ███
+              ███ ▄▄▄▄ ██████████ ▄▄▄▄ ███
+              ████████████████████████████
+              ████████████████████████████
+               ███████ ▄▄▄▄▄▄▄▄▄▄ ███████
+                 █████ ██████████ █████
+                   ███▄▄▄▄▄▄▄▄▄▄▄▄███
+                     ██████████████
+
+        ████████████████████████████████████████████████
+        █                                              █
+        █              ¡TE VOY A HACKEAR!              █
+        █     TODOS TUS DATOS HAN SIDO COMPROMETIDOS   █
+        █                                              █
+        ████████████████████████████████████████████████
+
+"@
+
+    Start-Sleep -Seconds 3
+
+    $Host.UI.RawUI.BackgroundColor = "Black"
+    $Host.UI.RawUI.ForegroundColor = "Green"
+    Clear-Host
+    Write-Host "`n       [+] Es una broma. Ningún dato fue robado. Relájate ;)`n" -ForegroundColor Green
+    
+    $Host.UI.RawUI.BackgroundColor = $origBG
+    $Host.UI.RawUI.ForegroundColor = $origFG
     Pause-Scanner
 }
 
 function Show-WindowsServices {
     Show-Header "ESTADO DE SERVICIOS WINDOWS"
+    Write-Host "       [ ❖ ] TABLA DE SERVICIOS MONITOREADOS" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    Write-Host ("       {0,-14} {1,-16} {2,-10}" -f "SERVICIO", "ESTADO", "CRÍTICO") -ForegroundColor White
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+
+    $tabla = [System.Collections.Generic.List[PSCustomObject]]::new()
+    foreach ($service in $script:WindowsServices) {
+        $esCritico = ($service -eq "pcasvc" -or $service -eq "bam" -or $service -eq "sysmain")
+        try {
+            $estado = (Get-Service -Name $service -ErrorAction Stop).Status.ToString()
+        } catch {
+            $estado = "NO ENCONTRADO"
+        }
+        $tabla.Add([PSCustomObject]@{ Servicio = $service; Estado = $estado; Critico = if ($esCritico) { "SI" } else { "NO" } })
+    }
+
+    foreach ($row in $tabla) {
+        $color = switch ($row.Estado) {
+            "Running" { "Green" }
+            "Stopped" { "Red" }
+            default   { "Yellow" }
+        }
+        Write-Host ("       {0,-14} {1,-16} {2,-10}" -f $row.Servicio, $row.Estado, $row.Critico) -ForegroundColor $color
+    }
+    Write-Host ""
+
     $hallazgosSvc = [System.Collections.Generic.List[string]]::new()
     foreach ($service in $script:WindowsServices) {
         $output = @(& sc.exe query $service 2>&1) -join "`n"
         if ($output -match 'STOPPED' -and ($service -eq "pcasvc" -or $service -eq "bam" -or $service -eq "sysmain")) {
-            $hallazgosSvc.Add("Servicio Apagado: $service")
+            $hallazgosSvc.Add("SERVICIO APAGADO CRÍTICO: $service")
         }
     }
-    Show-DetectionBox -Detections $hallazgosSvc -Title "ALERTAS DE SERVICIOS"
+    Show-DetectionBox -Detections $hallazgosSvc -Title "ALERTAS DE SERVICIOS MODIFICADOS"
     Pause-Scanner
 }
 
@@ -401,11 +636,14 @@ function Start-SSToolsHub {
         [PSCustomObject]@{ Id=1; Name="System Informer"; Url="https://sourceforge.net/projects/systeminformer/files/latest/download"; Icon="✦" }
         [PSCustomObject]@{ Id=2; Name="JournalTrace"; Url="https://github.com/ponei/JournalTrace/releases/download/1.0/JournalTrace.exe"; Icon="▶" }
     )
-    foreach ($t in $tools) { Write-Host "     [$($t.Id)] $($t.Icon) $($t.Name)" -ForegroundColor White }
-    $choice = (Read-Host "`n     [COMANDO] ID (o 0 salir)").Trim()
+    Write-Host "       [ ❖ ] LISTA DE APLICACIONES FORENSES DISPONIBLES" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    foreach ($t in $tools) { Write-Host "       [ $($t.Id) ] $($t.Icon) $($t.Name)" -ForegroundColor White }
+    $choice = (Read-Host "`n       [COMANDO] Ingresa el ID para lanzar (o 0 para salir)").Trim()
     if ($choice -ne "0") {
         $sel = $tools | Where-Object { $_.Id.ToString() -eq $choice }
         if ($sel) {
+            Write-Host "       [*] Ejecutando $($sel.Name)..." -ForegroundColor Yellow
             try {
                 $out = "$env:TEMP\$(($sel.Name -replace '\s','_')).exe"
                 Invoke-WebRequest -Uri $sel.Url -OutFile $out -UseBasicParsing -TimeoutSec 15
@@ -417,56 +655,73 @@ function Start-SSToolsHub {
 
 function Start-RemoteScript {
     Show-Header "PAYLOAD HUB (GITHUB)"
-    if (-not (Test-Administrator)) { Write-Host "     [!] Se requiere Administrador."; Pause-Scanner; return }
+    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     $payloads = @(
         [PSCustomObject]@{ Id=1; Name="Lilith Services"; Url="https://raw.githubusercontent.com/praiselily/lilith-ps/refs/heads/main/Services.ps1" },
         [PSCustomObject]@{ Id=2; Name="Ordiff Kill ScreenRecording"; Url="https://raw.githubusercontent.com/Orbdiff/powershell/refs/heads/main/kill-screen-processes.ps1" }
     )
-    foreach ($p in $payloads) { Write-Host "     [$($p.Id)] $($p.Name)" -ForegroundColor White }
-    $choice = (Read-Host "`n     [COMANDO] ID (o 0 salir)").Trim()
+    Write-Host "       [ ❖ ] SCRIPTS REMOTOS (PAYLOADS)" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    foreach ($p in $payloads) { Write-Host "       [ $($p.Id) ] $($p.Name)" -ForegroundColor White }
+    $choice = (Read-Host "`n       [COMANDO] Ingresa el ID para lanzar (o 0 para salir)").Trim()
     if ($choice -ne "0") {
         $sel = $payloads | Where-Object { $_.Id.ToString() -eq $choice }
         if ($sel) {
+            Write-Host "       [*] Inyectando payload en memoria..." -ForegroundColor Yellow
             try {
                 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force -ErrorAction SilentlyContinue
                 & ([ScriptBlock]::Create((Invoke-RestMethod -Uri $sel.Url -UseBasicParsing)))
-            } catch { Write-Host "     [!] Error: $($_.Exception.Message)" -ForegroundColor Red }
+            } catch { Write-Host "       [!] Error: $($_.Exception.Message)" -ForegroundColor Red }
         }
     }
     Pause-Scanner
 }
 
 function Start-FullDiskScan {
-    Show-Header "ANÁLISIS COMPLETO DEL DISCO (MODIFICADOS Y BORRADOS)"
+    Show-Header "ANÁLISIS COMPLETO (MODIFICADOS Y BORRADOS)"
     $hallazgosDisco = [System.Collections.Generic.List[string]]::new()
-    
-    Write-Host "     [*] Escaneando papelera raíz de todos los discos..." -ForegroundColor DarkGray
+    Write-Host "       [ ❖ ] FASE 1: ESCANEANDO PAPELERA EN TODOS LOS DISCOS LÓGICOS..." -ForegroundColor Cyan
     $sid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
     $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
+    $dTotal = $drives.Count
+    $dCount = 0
     foreach ($drive in $drives) {
+        $dCount++
+        $pct = [math]::Round(($dCount / $dTotal) * 100)
+        $barLength = 30; $filled = [math]::Round(($pct / 100) * $barLength); $pBar = "█" * $filled + "▒" * ($barLength - $filled)
+        Write-Host "`r       [*] Procesando Papeleras   [$pBar] $pct% " -NoNewline -ForegroundColor Magenta
         $recPath = "$drive`$Recycle.Bin\$sid"
         if (Test-Path $recPath) {
             Get-ChildItem -Path $recPath -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
-                if ($_.Name -match $script:RegexHacks) {
-                    $hallazgosDisco.Add("[BORRADO-HACK] TE VAS BAN | Ruta: $($_.FullName)")
+                if ($script:RxHacks.IsMatch($_.Name)) {
+                    $hallazgosDisco.Add("[BORRADO HACK - TE VAS BAN] $($_.Name) | Ruta: $($_.FullName)")
                 } else {
-                    $hallazgosDisco.Add("[BORRADO] $($_.Name) | Ruta: $($_.FullName)")
+                    $hallazgosDisco.Add("[BORRADO NORMAL] $($_.Name) | Ruta: $($_.FullName)")
                 }
             }
         }
     }
-
-    Write-Host "     [*] Escaneando ejecutables/mods modificados en las últimas 48 hrs..." -ForegroundColor DarkGray
-    Get-ChildItem -Path "C:\Users" -Recurse -File -Include "*.jar","*.exe","*.bat" -ErrorAction SilentlyContinue | 
-    Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-2) } | ForEach-Object {
-        if ($_.Name -match $script:RegexHacks) {
-            $hallazgosDisco.Add("[MODIFICADO-HACK] TE VAS BAN | Ruta: $($_.FullName)")
-        } else {
-            $hallazgosDisco.Add("[MODIFICADO] $($_.Name) | Ruta: $($_.FullName)")
+    Write-Host "`n"
+    Write-Host "       [ ❖ ] FASE 2: BUSCANDO EJECUTABLES Y MODS RECIENTEMENTE MODIFICADOS..." -ForegroundColor Cyan
+    $userDirs = Get-ChildItem -Path "C:\Users" -Directory -ErrorAction SilentlyContinue
+    $uTotal = $userDirs.Count
+    $uCount = 0
+    foreach ($dir in $userDirs) {
+        $uCount++
+        $pct = [math]::Round(($uCount / $uTotal) * 100)
+        $barLength = 30; $filled = [math]::Round(($pct / 100) * $barLength); $pBar = "█" * $filled + "▒" * ($barLength - $filled)
+        Write-Host "`r       [*] Escaneando Modificados [$pBar] $pct% " -NoNewline -ForegroundColor Magenta
+        Get-ChildItem -Path $dir.FullName -Recurse -File -Include "*.jar","*.exe","*.bat" -ErrorAction SilentlyContinue | 
+        Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-2) } | ForEach-Object {
+            if ($script:RxHacks.IsMatch($_.Name)) {
+                $hallazgosDisco.Add("[MODIFICADO HACK - TE VAS BAN] $($_.Name) | Ruta: $($_.FullName)")
+            } else {
+                $hallazgosDisco.Add("[MODIFICADO RECIENTE] $($_.Name) | Ruta: $($_.FullName)")
+            }
         }
     }
-
-    Show-DetectionBox -Detections $hallazgosDisco -Title "ARCHIVOS MODIFICADOS Y BORRADOS EN DISCO"
+    Write-Host "`n"
+    Show-DetectionBox -Detections $hallazgosDisco -Title "MODIFICADOS Y BORRADOS EN DISCO"
     Pause-Scanner
 }
 
@@ -478,8 +733,10 @@ function Start-WinRCommands {
         [PSCustomObject]@{ Id=3; Cmd="C:\Windows\Prefetch"; Desc="Prefetch" },
         [PSCustomObject]@{ Id=4; Cmd="cmd.exe"; Desc="Consola CMD" }
     )
-    foreach ($r in $rutas) { Write-Host "     [$($r.Id)] $($r.Cmd) ➜ $($r.Desc)" -ForegroundColor Yellow }
-    $choice = (Read-Host "`n     [COMANDO] ID (o 0 salir)").Trim()
+    Write-Host "       [ ❖ ] ACCESOS DIRECTOS DEL SISTEMA" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    foreach ($r in $rutas) { Write-Host "       [ $($r.Id) ] $($r.Cmd)  ➜  $($r.Desc)" -ForegroundColor Yellow }
+    $choice = (Read-Host "`n       [COMANDO] Ingresa el ID para abrir (o 0 para salir)").Trim()
     if ($choice -ne "0") {
         $sel = $rutas | Where-Object { $_.Id.ToString() -eq $choice }
         if ($sel) {
@@ -494,127 +751,98 @@ function Start-WinRCommands {
     }
 }
 
-function Start-AdvancedAutoclickScan {
-    Show-Header "BÚSQUEDA PROFUNDA DE AUTOCLICKERS (TODO EL DISCO)"
-    $hallazgos = [System.Collections.Generic.List[string]]::new()
-    
-    $regexNames = "autoclick|gsautoclick|opautoclicker|forgeclick|speedautoclick|macro|clicker|murgee|tinytask|jitbit|fyre|jclicker|ghostclicker"
-    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | Select-Object -ExpandProperty Root
-    
-    foreach ($drive in $drives) {
-        Write-Host "     [*] Rastreando el disco $drive (Esto tomará algo de tiempo)..." -ForegroundColor DarkGray
-        Get-ChildItem -Path $drive -Recurse -File -Include "*.exe","*.jar","*.bat","*.ahk","*.vbs","*.py","*.dll" -ErrorAction SilentlyContinue | 
-        Where-Object { $_.Name -match $regexNames } | ForEach-Object {
-            $hallazgos.Add("[AUTOCLICK DETECTADO] TE VAS BAN | Ruta: $($_.FullName)")
-        }
-    }
-    
-    Show-DetectionBox -Detections $hallazgos -Title "AUTOCLICKERS DETECTADOS EN EL SISTEMA"
-    Pause-Scanner
-}
-
 function Start-ExtremeModScan {
     Show-Header "ANÁLISIS EXTREMO (PROCESOS, INSTANCIAS Y MODS)"
-    if (-not (Test-Administrator)) { Write-Host "     [!] Se requiere Administrador."; Pause-Scanner; return }
-    
+    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     $hallazgos = [System.Collections.Generic.List[string]]::new()
     $allProcs = Get-Process -ErrorAction SilentlyContinue
 
-    # =========================================================
-    # 1. SEPARACIÓN DE PROCESOS (MC vs HACKS vs NORMALES)
-    # =========================================================
-    Write-Host "`n     [====== SEPARACIÓN DE PROCESOS ======]" -ForegroundColor Cyan
-    
-    $mcProcs = $allProcs | Where-Object { $_.Name -match "java|javaw|lunarclient|craft" }
-    $badProcs = $allProcs | Where-Object { $_.Name -match $script:RegexHacks }
-    $otherProcs = $allProcs | Where-Object { $_.Name -notmatch "java|javaw|lunarclient|craft" -and $_.Name -notmatch $script:RegexHacks }
+    Write-Host "       [ ❖ ] SEPARACIÓN DE PROCESOS (MEMORIA RAM EN TIEMPO REAL)" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
+    $mcProcs = $allProcs | Where-Object { $script:RxMcProcess.IsMatch($_.Name) }
+    $badProcs = $allProcs | Where-Object { $script:RxHacks.IsMatch($_.Name) }
+    $otherProcs = $allProcs | Where-Object { -not $script:RxMcProcess.IsMatch($_.Name) -and -not $script:RxHacks.IsMatch($_.Name) }
 
     if ($mcProcs) {
-        Write-Host "     [INSTANCIAS DE JUEGO / MC]" -ForegroundColor Green
+        Write-Host "       [ INSTANCIAS DE JUEGO / MC ]" -ForegroundColor DarkGray
         foreach ($proc in $mcProcs) {
-            Write-Host "     [+] $($proc.Name).exe (PID: $($proc.Id)) - CORRIENDO" -ForegroundColor Green
+            Write-Host "       [+] INSTANCIA ACTIVA : $($proc.Name).exe (PID: $($proc.Id))" -ForegroundColor Green
             try {
-                $proc.Modules | Where-Object { $_.FileName -match $script:RegexHacks } | ForEach-Object {
-                    Write-Host "         [!] HACK INYECTADO: $($_.ModuleName) - TE VAS BAN" -ForegroundColor Red
-                    Write-Host "         [!] Ruta de la inyección: $($_.FileName)" -ForegroundColor Red
-                    $hallazgos.Add("[INYECCIÓN EN RAM] $($_.ModuleName) - TE VAS BAN | Ruta: $($_.FileName)")
+                $proc.Modules | Where-Object { $script:RxHacks.IsMatch($_.FileName) } | ForEach-Object {
+                    Write-Host "           -> [!] INYECCIÓN DETECTADA : $($_.ModuleName) - TE VAS BAN" -ForegroundColor Red
+                    Write-Host "           -> [!] RUTA DEL HACK       : $($_.FileName)" -ForegroundColor Red
+                    $hallazgos.Add("[INYECCIÓN EN RAM - TE VAS BAN] $($_.ModuleName) | Ruta: $($_.FileName)")
                 }
             } catch {}
         }
     } else {
-        Write-Host "     [-] No se detectaron instancias de Minecraft o Java." -ForegroundColor White
+        Write-Host "       [-] INSTANCIAS: No se detectó Minecraft ni Java en ejecución." -ForegroundColor White
     }
 
+    Write-Host ""
     if ($badProcs) {
-        Write-Host "`n     [PROCESOS HACK / AUTOCLICKS EXTERNOS]" -ForegroundColor Red
+        Write-Host "       [ PROCESOS EXTERNOS PROHIBIDOS ]" -ForegroundColor DarkGray
         foreach ($proc in $badProcs) {
-            Write-Host "     [!] $($proc.Name).exe (PID: $($proc.Id)) - TE VAS BAN" -ForegroundColor Red
-            $hallazgos.Add("[PROCESO HACK] $($proc.Name).exe - TE VAS BAN")
+            Write-Host "       [!] PROCESO HACK     : $($proc.Name).exe (PID: $($proc.Id)) - TE VAS BAN" -ForegroundColor Red
+            $hallazgos.Add("[PROCESO EXTERNO - TE VAS BAN] $($proc.Name).exe (PID: $($proc.Id)) | Ruta: Memoria (Activo)")
         }
     } else {
-        Write-Host "`n     [+] Ningún proceso externo catalogado como Hack." -ForegroundColor White
+        Write-Host "       [+] EXTERNOS: Ningún proceso catalogado como Hack está abierto." -ForegroundColor Green
     }
 
-    Write-Host "`n     [PROCESOS DEL SISTEMA]" -ForegroundColor White
-    Write-Host "     [*] Analizando $($otherProcs.Count) procesos normales en segundo plano... (Blancos/Limpios)" -ForegroundColor White
+    Write-Host ""
+    Write-Host "       [ PROCESOS DEL SISTEMA (SEGUNDO PLANO) ]" -ForegroundColor DarkGray
+    Write-Host "       [*] Sistema Limpio   : $($otherProcs.Count) procesos normales analizados." -ForegroundColor White
 
-
-    # =========================================================
-    # 2. ESCANEO DE MODS EN CARPETA (LEGALES VS ILEGALES)
-    # =========================================================
-    Write-Host "`n     [====== ANÁLISIS DE MODS (.JAR) ======]" -ForegroundColor Cyan
+    Write-Host "`n       [ ❖ ] ANÁLISIS DE CARPETA DE MODS (.JAR)" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
     if (Test-Path $script:DefaultModsPath) {
         $modFiles = Get-ChildItem -Path $script:DefaultModsPath -Recurse -File -Include "*.jar", "*.zip", "*.dll"
         if ($modFiles.Count -gt 0) {
             foreach ($mod in $modFiles) {
                 $isBad = $false
-                if ($mod.Name.ToLower() -match $script:RegexHacks) { $isBad = $true }
+                if ($script:RxHacks.IsMatch($mod.Name)) { $isBad = $true }
                 if ($mod.LastWriteTime -gt $mod.CreationTime.AddDays(7)) { $isBad = $true }
                 if ($mod.Length -lt 15KB) { $isBad = $true }
-
                 if ($isBad) {
-                    Write-Host "     [!] MOD ILEGAL O MODIFICADO: $($mod.Name) -> TE VAS BAN" -ForegroundColor Red
-                    $hallazgos.Add("[MOD ILEGAL] $($mod.Name) | Ruta: $($mod.FullName)")
+                    Write-Host "       [!] MOD ILEGAL O MODIFICADO : $($mod.Name) - TE VAS BAN" -ForegroundColor Red
+                    $hallazgos.Add("[MOD ILEGAL - TE VAS BAN] $($mod.Name) | Ruta: $($mod.FullName)")
                 } else {
-                    Write-Host "     [+] MOD LEGAL: $($mod.Name) -> Aprobado" -ForegroundColor Green
+                    Write-Host "       [+] MOD LEGAL APROBADO      : $($mod.Name)" -ForegroundColor Green
                 }
             }
         } else {
-            Write-Host "     [-] La carpeta de mods está vacía." -ForegroundColor White
+            Write-Host "       [-] La carpeta de mods está vacía." -ForegroundColor White
         }
     } else {
-        Write-Host "     [-] No se encontró carpeta de mods en AppData." -ForegroundColor White
+        Write-Host "       [-] No se encontró carpeta de mods en AppData." -ForegroundColor White
     }
 
-
-    # =========================================================
-    # 3. PAPELERA DE RECICLAJE
-    # =========================================================
-    Write-Host "`n     [====== PAPELERA DE RECICLAJE ======]" -ForegroundColor Cyan
+    Write-Host "`n       [ ❖ ] ESTADO DE LA PAPELERA DE RECICLAJE" -ForegroundColor Cyan
+    Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
     try {
         $shell = New-Object -ComObject Shell.Application
         $papelera = $shell.NameSpace(10)
         if ($papelera.Items().Count -gt 0) {
             foreach ($item in $papelera.Items()) {
-                if ($item.Name.ToLower() -match $script:RegexHacks) {
-                    Write-Host "     [!] BORRADO HACK: $($item.Name) -> TE VAS BAN" -ForegroundColor Red
-                    $hallazgos.Add("[PAPELERA HACK] $($item.Name) | Ruta Original: $($item.Path)")
+                if ($script:RxHacks.IsMatch($item.Name)) {
+                    Write-Host "       [!] HACK BORRADO : $($item.Name) - TE VAS BAN" -ForegroundColor Red
+                    $hallazgos.Add("[PAPELERA HACK - TE VAS BAN] $($item.Name) | Ruta: $($item.Path)")
                 } else {
-                    Write-Host "     [-] BORRADO NORMAL: $($item.Name)" -ForegroundColor White
+                    Write-Host "       [-] ARCHIVO NORMAL : $($item.Name)" -ForegroundColor White
                 }
             }
         } else {
-            Write-Host "     [-] La papelera de reciclaje está vacía." -ForegroundColor White
+            Write-Host "       [-] La papelera de reciclaje se encuentra vacía." -ForegroundColor White
         }
     } catch {}
 
-    Show-DetectionBox -Detections $hallazgos -Title "RESULTADOS DE INSTANCIAS, MODS Y PAPELERA"
+    Show-DetectionBox -Detections $hallazgos -Title "RESULTADOS DE ALERTAS DE AUDITORÍA"
     Pause-Scanner
 }
 
-
 # ============================================================
-# MENÚ PRINCIPAL ESTRUCTURADO Y ALINEADO
+# MENÚ PRINCIPAL (13 MÓDULOS - MACRO/AUTOCLICK UNIFICADO)
 # ============================================================
 function Show-MainMenu {
 
@@ -682,8 +910,8 @@ function Show-MainMenu {
                 "       [  2  ] Doomsday Detector          [  9  ] Hub Payloads (GitHub)     "
                 "       [  3  ] Análisis Prefetch/BAM      [ 10  ] Análisis Completo Disco   "
                 "       [  4  ] Análisis Papelera          [ 11  ] Rutas Manuales (Win+R)    "
-                "       [  5  ] Auditoría de Macros        [ 12  ] Autoclick Scanner (ALL)   "
-                "       [  6  ] Killer Screen (Diff)       [ 13  ] Mod & Instancia Extreme   "
+                "       [  5  ] Macros & Autoclick (ALL)   [ 12  ] Mod & Instancia Extreme   "
+                "       [  6  ] Killer Screen (Diff)       [ 13  ] ⚠ NO TOCAR ⚠             "
                 "       [  7  ] Servicios Windows          [ 14  ] Salir de Framework        "
                 "                                                                                "
                 "       ─────────────────────────────────────────────────────────────────"
@@ -721,8 +949,8 @@ function Show-MainMenu {
                 "03" { Start-SystemScan }
                 "4"  { Start-RecycleBinScan }
                 "04" { Start-RecycleBinScan }
-                "5"  { Start-MacroAudit }
-                "05" { Start-MacroAudit }
+                "5"  { Start-MacroAutoclickScan }
+                "05" { Start-MacroAutoclickScan }
                 "6"  { Start-DiffKiller }
                 "06" { Start-DiffKiller }
                 "7"  { Show-WindowsServices }
@@ -733,8 +961,8 @@ function Show-MainMenu {
                 "09" { Start-RemoteScript }
                 "10" { Start-FullDiskScan }
                 "11" { Start-WinRCommands }
-                "12" { Start-AdvancedAutoclickScan }
-                "13" { Start-ExtremeModScan }
+                "12" { Start-ExtremeModScan }
+                "13" { Invoke-Screamer }
                 "14" { 
                     Clear-Host
                     Invoke-Typewriter "`n       [!] CERRANDO CONEXIÓN. HASTA LUEGO, JOAQUÍN.`n" -Color Red
@@ -756,4 +984,5 @@ function Show-MainMenu {
 # ============================================================
 # INICIO
 # ============================================================
+$script:IsAdmin = Test-Administrator
 Show-MainMenu
