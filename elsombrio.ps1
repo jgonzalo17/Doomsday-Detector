@@ -3,12 +3,59 @@ chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V55 - VIRUS INJECTION UI)
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V57 - RED CUSTOM UI)
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods"
 $script:FirstRun = $true
-$script:BoxW = 95 # Ancho global de la interfaz
+$script:BoxW = 95 
+
+$script:sideGirl = @(
+    "                                                     .::---:               ::"
+    "                                                    =-..-::-*=            -+.   -+-"
+    "                                                   -: =.     :+          :=+   ==="
+    "                                                  :+ .*       =:        ===-::.==."
+    "                                                   -: +                :. ..:. -.=.     .."
+    "                                                    =--=       .....  =:   .=  ==+-   .:++."
+    "                                                     .-==.    =:...::-:    -.   :*-. :==-."
+    "                                                        -=-. .+       :=-     :-: .=:=.+"
+    "                                                          .:=---::::.   -=+:  .  .--.=.  "
+    "                                                       :----:  ::.  :=:   :=-:   -  :=:::."
+    "                                                     :-.:...::- :- ::::=:  -=.: :-.=-----+"
+    "                                                    =. -: :..   . .:    ==  .-.  +-::+."
+    "                                                  --. =.  .   :    =:    *+  -+=:..:=:"
+    "                                            :---::. -:  -   :+:  =  =:    ++  .+ ..---"
+    "                                             .---::...-.  :-:=  .+   =    .==  --. ..++"
+    "                                            ---:.   :. .--..-+  :=    --.   =+.  +.:-:-+"
+    "                                            =..: :=--=+-===..-  -..: = :--:.:=-  .=. *+."
+    "                                            *.* -=  *-*..**=  : =..+.=:.   ..=.   .+ :*-"
+    "                                            .--.+:  =-*.  .    :--@*=+=:.-=  :=    =:+:+"
+    "                                              =:*:-. .+=     .    --.-=:  :-  +    -:=-"
+    "                                              :.  ..=-  =-  :::    :-=-    .+=-    --+"
+    "                                                   =-..  .-::..::--= ...-:-.-.     ==."
+    "                                                  .=: :. -+:::+-..+..+. -==.      :+"
+    "                                                    ::=--=.---+- .-=:=.. ..       :"
+    "                                               .:-::--=: :+:.--*--+=. .:=:::"
+    "                                              =:-:..:.:.  -..-.... :.:  .  --"
+    "                                          .-=-  +=:.=::: .+: .==:=.:-+      =:"
+    "                                          =-:. .+ ..  .  .+-:  .-=.=:-     ..+:"
+    "                                              ::--. .:.    .-:.    .:-.   .      :-"
+    "                                               .--=:.     =-.    .+:          .:"
+    "                                                .-::.    .+:     =.          ."
+    "                                                 .-==:  .=.     =.        .:"
+    "                                                    :=--+     -=      .-:"
+    "                                                      .+:    .+.    .:"
+    "                                                      :=    .=.   .-"
+    "                                                       =.   +."
+    "                                                       -=  -=  .:"
+    "                                                        +. +.  ="
+    "                                                       -=+  .+"
+    "                                                         +:  ="
+    "                                                         :=  +"
+    "                                                          +:-"
+    "                                                          :=."
+    "                                                         .::"
+)
 
 $script:IllegalKeywords = @(
     "antighosttotem", "fasttotem", "totemhelper", "autototem", "totem", "switchtotems",
@@ -25,10 +72,6 @@ $script:IllegalKeywords = @(
 )
 
 $script:RegexHacks = ($script:IllegalKeywords -join "|")
-
-# ------------------------------------------------------------
-# LISTAS Y REGEX OPTIMIZADOS
-# ------------------------------------------------------------
 $script:MacroAutoclickCritical = @(
     "autoclicker", "auto-clicker", "auto_click", "autoclick", "clickbot", "click-bot",
     "gsautoclick", "gs auto clicker", "opautoclick", "op auto clicker",
@@ -86,7 +129,7 @@ if (-not ([System.Management.Automation.PSTypeName]'SombrioDecompressor').Type) 
 }
 
 # ============================================================
-# INTERFAZ GRÁFICA CORE
+# ANIMACIONES Y EFECTOS VISUALES
 # ============================================================
 function Invoke-Typewriter {
     param([string]$Text, [int]$Speed = 15, [string]$Color = "White")
@@ -98,45 +141,46 @@ function Invoke-Typewriter {
 }
 
 function Show-BootAnimation {
+    Clear-Host
+    Write-Host "`n"
+    # Dibujar a la mona china en la carga
+    for ($i = 0; $i -lt $script:sideGirl.Count; $i++) {
+        $line = $script:sideGirl[$i]
+        if ($i -ge 12 -and $i -le 24) { Write-Host $line -ForegroundColor DarkCyan } 
+        elseif ($i -gt 24 -and $i -le 48) { Write-Host $line -ForegroundColor Cyan } 
+        else { Write-Host $line -ForegroundColor DarkMagenta }
+    }
+    Write-Host "`n"
+
     $bootSteps = @(
         "Inicializando módulos de descompresión NT...",
         "Resolviendo dependencias remotas y APIs...",
         "Inyectando hooks en procesos de memoria...",
-        "Sincronizando paleta de colores Ciber-Neón...",
+        "Sincronizando paleta de colores Escarlata...",
         "Estableciendo enlace de sistema seguro..."
     )
 
     for ($i=0; $i -lt 15; $i++) {
-        Clear-Host
-        Write-Host "`n`n`n`n`n"
-        Write-Host "                                   |\__/,|   (`\ " -ForegroundColor Cyan
-        Write-Host "                                 _.|o o  |_   ) ) " -ForegroundColor Cyan
-        Write-Host "                                -(((---(((-------- " -ForegroundColor Cyan
-        
         $stepIndex = [math]::Min([math]::Floor($i / 3), $bootSteps.Count - 1)
-        Write-Host "`n       [Bootloader] $($bootSteps[$stepIndex])" -ForegroundColor DarkGray
+        $stepText = $bootSteps[$stepIndex].PadRight(50, ' ')
         
         $pct = [math]::Round((($i + 1) / 15) * 100)
-        $barLength = 50
+        $barLength = 40
         $filled = [math]::Round(($pct / 100) * $barLength)
         $empty = $barLength - $filled
         $progressBar = "█" * $filled + "▒" * $empty
         
-        Write-Host "       [System]     $pct% [$progressBar]" -ForegroundColor Magenta
+        Write-Host "`r       [Bootloader] $stepText | [$progressBar] $pct% " -NoNewline -ForegroundColor Red
         Start-Sleep -Milliseconds 120
     }
-    Write-Host "`n       [OK] INTERFAZ LISTA. SISTEMA FORENSE OPERATIVO.`n" -ForegroundColor Green
-    Start-Sleep -Milliseconds 500
+    Write-Host "`n`n       [OK] INTERFAZ LISTA. SISTEMA FORENSE OPERATIVO.`n" -ForegroundColor Green
+    Start-Sleep -Milliseconds 600
 }
 
 function Show-Banner {
     Clear-Host
     Write-Host "`n`n"
     $banner = @"
-                                   |\__/,|   (`\
-                                 _.|o o  |_   ) )
-                                -(((---(((--------
-
               ███████╗ ██████╗ ███╗   ███╗██████╗ ██████╗ ██╗ ██████╗
               ██╔════╝██╔═══██╗████╗ ████║██╔══██╗██╔══██╗██║██╔═══██╗
               ███████╗██║   ██║██╔████╔██║██████╔╝██████╔╝██║██║   ██║
@@ -144,28 +188,40 @@ function Show-Banner {
               ███████║╚██████╔╝██║ ╚═╝ ██║██████╔╝██║  ██║██║╚██████╔╝
               ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚═╝ ╚═════╝
 "@
-    Write-Host $banner -ForegroundColor Cyan
+    Write-Host $banner -ForegroundColor Red
     $pad = [math]::Max(0, [math]::Floor(($script:BoxW - 41) / 2))
-    $str = ((' ' * $pad) + "[ ADVANCED FORENSIC SCANNER - WIDESCREEN UI ]").PadRight($script:BoxW, ' ')
-    Write-Host "       $str`n" -ForegroundColor Magenta
+    $str = ((' ' * $pad) + "[ ADVANCED FORENSIC SCANNER - RED UI EDITION ]").PadRight($script:BoxW, ' ')
+    Write-Host "       $str`n" -ForegroundColor DarkRed
 }
 
 function Show-Header {
     param([string]$Subtitle)
-    Write-Host "`n`n`n       ╔$($("═" * $script:BoxW))╗" -ForegroundColor DarkCyan
+    Write-Host "`n`n`n       ╔$($("═" * $script:BoxW))╗" -ForegroundColor DarkRed
     $titlePad = [math]::Max(0, [math]::Floor(($script:BoxW - 38) / 2))
     $titleStr = ((' ' * $titlePad) + "EL SOMBRIO IF - FORENSIC SCANNER").PadRight($script:BoxW, ' ')
-    Write-Host "       ║$titleStr║" -ForegroundColor Cyan
-    Write-Host "       ╠$($("═" * $script:BoxW))╣" -ForegroundColor DarkCyan
+    Write-Host "       ║$titleStr║" -ForegroundColor Red
+    Write-Host "       ╠$($("═" * $script:BoxW))╣" -ForegroundColor DarkRed
     $subPad = [math]::Max(0, [math]::Floor(($script:BoxW - $Subtitle.Length) / 2))
     $subStr = ((' ' * $subPad) + $Subtitle).PadRight($script:BoxW, ' ')
     Write-Host "       ║$subStr║" -ForegroundColor White
-    Write-Host "       ╚$($("═" * $script:BoxW))╝`n" -ForegroundColor DarkCyan
+    Write-Host "       ╚$($("═" * $script:BoxW))╝`n" -ForegroundColor DarkRed
 }
 
 function Pause-Scanner {
-    Write-Host "`n       $($("─" * $script:BoxW))" -ForegroundColor DarkGray
-    Invoke-Typewriter "       [ Presiona CUALQUIER TECLA para regresar al menú principal ]" -Speed 10 -Color Magenta
+    Write-Host "`n       $($("─" * $script:BoxW))" -ForegroundColor DarkRed
+    
+    # Animación Nyan Cat Volando
+    $colors = @("Red","Yellow","Green","Cyan","Magenta")
+    for ($i=0; $i -lt 20; $i++) {
+        $c = $colors[$i % $colors.Count]
+        $space = " " * ($i % 8)
+        $cat = "       $space 🌈✨ ~=[,,_,,]:3"
+        Write-Host "`r$cat   " -NoNewline -ForegroundColor $c
+        Start-Sleep -Milliseconds 80
+    }
+    Write-Host "`n"
+    
+    Invoke-Typewriter "       [ Presiona CUALQUIER TECLA para regresar al menú principal ]" -Speed 10 -Color Red
     try { $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown") } catch { $null = Read-Host }
 }
 
@@ -176,11 +232,11 @@ function Show-DetectionBox {
     Show-Header "REPORTE DE AUDITORÍA"
     $cW = [math]::Floor(($script:BoxW - 1) / 2) 
 
-    $borderColor = if ($Detections | Where-Object { $_ -match "HACK|TE VAS BAN|ILEGAL|PELIGRO" }) { "Red" } else { "DarkGray" }
+    $borderColor = if ($Detections | Where-Object { $_ -match "HACK|TE VAS BAN|ILEGAL|PELIGRO" }) { "Red" } else { "DarkRed" }
 
-    Write-Host "       ╔$($("═" * $cW))╦$($("═" * $cW))╗" -ForegroundColor Cyan
+    Write-Host "       ╔$($("═" * $cW))╦$($("═" * $cW))╗" -ForegroundColor $borderColor
     Write-Host "       ║$($(" ALERTA / DETECCIÓN".PadRight($cW, ' ')))║$($(" RUTA / DETALLES".PadRight($cW, ' ')))║" -ForegroundColor Yellow
-    Write-Host "       ╠$($("═" * $cW))╬$($("═" * $cW))╣" -ForegroundColor Cyan
+    Write-Host "       ╠$($("═" * $cW))╬$($("═" * $cW))╣" -ForegroundColor $borderColor
     
     if ($Detections.Count -eq 0) {
         Write-Host "       ║$($(" Ninguna anomalía detectada.".PadRight($cW, ' ')))║$($(" ---".PadRight($cW, ' ')))║" -ForegroundColor Green
@@ -214,18 +270,18 @@ function Show-DetectionBox {
             $lPad = $strL.PadRight($cW, ' ')
             $rPad = $strR.PadRight($cW, ' ')
 
-            Write-Host "       ║" -NoNewline -ForegroundColor Cyan
+            Write-Host "       ║" -NoNewline -ForegroundColor $borderColor
             Write-Host $lPad -NoNewline -ForegroundColor $color
-            Write-Host "║" -NoNewline -ForegroundColor Cyan
+            Write-Host "║" -NoNewline -ForegroundColor $borderColor
             Write-Host $rPad -NoNewline -ForegroundColor $color
-            Write-Host "║" -ForegroundColor Cyan
+            Write-Host "║" -ForegroundColor $borderColor
         }
     }
-    Write-Host "       ╚$($("═" * $cW))╩$($("═" * $cW))╝" -ForegroundColor Cyan
+    Write-Host "       ╚$($("═" * $cW))╩$($("═" * $cW))╝" -ForegroundColor $borderColor
     
     if ($Detections.Count -gt 0) {
-        Write-Host "`n       [ ❖ ] LOG COMPLETO DE RUTAS DETECTADAS (POR SI SE RECORTARON):" -ForegroundColor Cyan
-        Write-Host "       $($("─" * $script:BoxW))" -ForegroundColor DarkGray
+        Write-Host "`n       [ ❖ ] LOG COMPLETO DE RUTAS DETECTADAS (POR SI SE RECORTARON):" -ForegroundColor Red
+        Write-Host "       $($("─" * $script:BoxW))" -ForegroundColor DarkRed
         foreach ($item in $Detections) { 
             if ($item -notmatch "======") {
                 $textColor = "Gray"
@@ -240,19 +296,16 @@ function Show-DetectionBox {
 
 function Test-Administrator { return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }
 
-# ============================================================
-# AISLAMIENTO DE SCRIPTS EXTERNOS (ANTI-CRASHEO MEJORADO)
-# ============================================================
 function Start-SafeRemote {
     param([string]$Url, [string]$Title)
     Clear-Host
     Show-Header $Title
     if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     
-    Write-Host "       [ ❖ ] CONECTANDO Y LANZANDO MÓDULO AISLADO..." -ForegroundColor Cyan
-    Write-Host "       $($("─" * $script:BoxW))" -ForegroundColor DarkGray
+    Write-Host "       [ ❖ ] CONECTANDO Y LANZANDO MÓDULO AISLADO..." -ForegroundColor Red
+    Write-Host "       $($("─" * $script:BoxW))" -ForegroundColor DarkRed
     Write-Host "       [*] La herramienta se ejecutará en una NUEVA VENTANA." -ForegroundColor Gray
-    Write-Host "       [*] La ventana NO se cerrará sola. Ciérrala manualmente (en la 'X') cuando termines de leer.`n" -ForegroundColor Magenta
+    Write-Host "       [*] La ventana NO se cerrará sola. Ciérrala manualmente (en la 'X') cuando termines de leer.`n" -ForegroundColor DarkRed
     
     try {
         $cmd = "irm '$Url' | iex"
@@ -269,7 +322,6 @@ function Start-SafeRemote {
 # MÓDULOS DE ESCANEO UNIFICADOS
 # ============================================================
 
-# [OPCIÓN 1] GLOBAL SCAN
 function Start-GlobalScan {
     Clear-Host
     Show-Header "ESCANEO GLOBAL DEL SISTEMA (ONE-CLICK)"
@@ -277,8 +329,8 @@ function Start-GlobalScan {
     
     $hallazgosGlobales = [System.Collections.Generic.List[string]]::new()
     
-    Write-Host "       [ ❖ ] INICIANDO AUDITORÍA GLOBAL. POR FAVOR ESPERA..." -ForegroundColor Cyan
-    Write-Host "       $($("─" * $script:BoxW))" -ForegroundColor DarkGray
+    Write-Host "       [ ❖ ] INICIANDO AUDITORÍA GLOBAL. POR FAVOR ESPERA..." -ForegroundColor Red
+    Write-Host "       $($("─" * $script:BoxW))" -ForegroundColor DarkRed
 
     Write-Host "       [*] 1/6 Analizando Memoria RAM e Instancias..." -ForegroundColor White
     $allProcs = Get-Process -ErrorAction SilentlyContinue
@@ -364,14 +416,13 @@ function Start-GlobalScan {
     Pause-Scanner
 }
 
-# [OPCIÓN 2] UNIFIED MODS
 function Start-UnifiedModScan {
     Clear-Host
     Show-Header "AUDITORÍA DE MODS E INSTANCIAS (LOCAL Y NUBE)"
     if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     $hallazgos = [System.Collections.Generic.List[string]]::new()
     
-    Write-Host "       [ ❖ ] 1. VERIFICANDO MEMORIA RAM EN TIEMPO REAL..." -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] 1. VERIFICANDO MEMORIA RAM EN TIEMPO REAL..." -ForegroundColor Red
     $allProcs = Get-Process -ErrorAction SilentlyContinue
     $mcProcs = $allProcs | Where-Object { $script:RxMcProcess.IsMatch($_.Name) }
     if ($mcProcs) {
@@ -385,7 +436,7 @@ function Start-UnifiedModScan {
         }
     }
 
-    Write-Host "       [ ❖ ] 2. ANALIZANDO CARPETA DE MODS (.JAR)..." -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] 2. ANALIZANDO CARPETA DE MODS (.JAR)..." -ForegroundColor Red
     if (Test-Path $script:DefaultModsPath) {
         $modFiles = Get-ChildItem -Path $script:DefaultModsPath -Recurse -File -Include "*.jar", "*.zip", "*.dll"
         foreach ($mod in $modFiles) {
@@ -401,7 +452,7 @@ function Start-UnifiedModScan {
         }
     }
 
-    Write-Host "       [ ❖ ] 3. BUSCANDO MODS ELIMINADOS EN LA PAPELERA..." -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] 3. BUSCANDO MODS ELIMINADOS EN LA PAPELERA..." -ForegroundColor Red
     try {
         $shell = New-Object -ComObject Shell.Application
         $papelera = $shell.NameSpace(10)
@@ -423,7 +474,6 @@ function Start-UnifiedModScan {
     }
 }
 
-# [OPCIÓN 4] UNIFIED TRACES (PREFETCH + PAPELERA + DISCO)
 function Start-TraceScan {
     Clear-Host
     Show-Header "ANÁLISIS DE RASTROS (PREFETCH, PAPELERA Y DISCO)"
@@ -432,7 +482,7 @@ function Start-TraceScan {
     $hallazgos = [System.Collections.Generic.List[string]]::new()
     $sid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
     
-    Write-Host "       [ ❖ ] 1. HISTORIAL DE PREFETCH (ÚLTIMOS 3 DÍAS)..." -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] 1. HISTORIAL DE PREFETCH (ÚLTIMOS 3 DÍAS)..." -ForegroundColor Red
     $pfFiles = Get-ChildItem -Path "C:\Windows\Prefetch" -Filter "*.pf" -ErrorAction SilentlyContinue
     if ($pfFiles) {
         $hoy = (Get-Date).Date; $ayer = $hoy.AddDays(-1); $hace2 = $hoy.AddDays(-2)
@@ -453,7 +503,7 @@ function Start-TraceScan {
         Add-Group ($validFiles | Where-Object { $_.LastWriteTime.Date -eq $hace2 }) "PREFETCH HACE DOS DÍAS"
     }
     
-    Write-Host "       [ ❖ ] 2. PAPELERA DE RECICLAJE (TODOS LOS DISCOS)..." -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] 2. PAPELERA DE RECICLAJE (TODOS LOS DISCOS)..." -ForegroundColor Red
     $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
     $hallazgos.Add("====== PAPELERA DE RECICLAJE ======")
     foreach ($drive in $drives) {
@@ -467,7 +517,7 @@ function Start-TraceScan {
         }
     }
 
-    Write-Host "       [ ❖ ] 3. ARCHIVOS MODIFICADOS RECIENTEMENTE (C:\Users)..." -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] 3. ARCHIVOS MODIFICADOS RECIENTEMENTE (C:\Users)..." -ForegroundColor Red
     $hallazgos.Add("====== ARCHIVOS MODIFICADOS EN DISCO ======")
     Get-ChildItem -Path "C:\Users" -Recurse -File -Include "*.jar","*.exe","*.bat" -ErrorAction SilentlyContinue | 
     Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-2) -and $script:RxHacks.IsMatch($_.Name) } | ForEach-Object {
@@ -478,13 +528,12 @@ function Start-TraceScan {
     Pause-Scanner
 }
 
-# [OPCIÓN 5] UNIFIED MACRO/AUTOCLICK SCAN
 function Start-MacroAutoclickScan {
     Clear-Host
     Show-Header "BÚSQUEDA DE MACROS Y AUTOCLICKERS"
     $hallazgos = [System.Collections.Generic.List[string]]::new()
 
-    Write-Host "       [ ❖ ] FASE 1: PROCESOS ACTIVOS EN MEMORIA" -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] FASE 1: PROCESOS ACTIVOS EN MEMORIA" -ForegroundColor Red
     $activeProcs = Get-Process -ErrorAction SilentlyContinue | Where-Object { $script:RxMacroCritical.IsMatch($_.Name) }
     if ($activeProcs) {
         foreach ($proc in $activeProcs) {
@@ -492,7 +541,7 @@ function Start-MacroAutoclickScan {
         }
     }
 
-    Write-Host "       [ ❖ ] FASE 2: ESCANEO PROFUNDO DE DISCO" -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] FASE 2: ESCANEO PROFUNDO DE DISCO" -ForegroundColor Red
     $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | Select-Object -ExpandProperty Root
     $allDirs = @()
     foreach ($drive in $drives) { $allDirs += Get-ChildItem -Path $drive -Directory -ErrorAction SilentlyContinue }
@@ -516,12 +565,11 @@ function Start-MacroAutoclickScan {
     Pause-Scanner
 }
 
-# [OPCIÓN 6] UNIFIED SYSTEM MAINTENANCE (DIFF + SERVICES)
 function Start-SysMaintenance {
     Clear-Host
     Show-Header "UTILIDADES DEL SISTEMA (PROCESOS Y SERVICIOS)"
     
-    Write-Host "       [ ❖ ] FINALIZADOR DE PROCESOS DE CAPTURA OCULTOS" -ForegroundColor Cyan
+    Write-Host "       [ ❖ ] FINALIZADOR DE PROCESOS DE CAPTURA OCULTOS" -ForegroundColor Red
     $forbidden = @("obs","obs32","obs64","discord","streamlabs","bandicam","sharex","gamebar")
     $detected = @()
     foreach ($proc in Get-Process -ErrorAction SilentlyContinue) {
@@ -540,7 +588,7 @@ function Start-SysMaintenance {
         Write-Host "       [+] No se encontraron aplicaciones de grabación ocultas." -ForegroundColor Green
     }
 
-    Write-Host "`n       [ ❖ ] ESTADO DE SERVICIOS WINDOWS CRÍTICOS" -ForegroundColor Cyan
+    Write-Host "`n       [ ❖ ] ESTADO DE SERVICIOS WINDOWS CRÍTICOS" -ForegroundColor Red
     $hallazgosSvc = [System.Collections.Generic.List[string]]::new()
     foreach ($service in $script:WindowsServices) {
         $output = @(& sc.exe query $service 2>&1) -join "`n"
@@ -554,27 +602,37 @@ function Start-SysMaintenance {
     Pause-Scanner
 }
 
-# [OPCIÓN 7] UNIFIED HUBS (TOOLS, PAYLOADS, WIN+R)
 function Start-Hubs {
     Clear-Host
     Show-Header "HUB DE HERRAMIENTAS Y PAYLOADS"
     
-    Write-Host "       [ ❖ ] HERRAMIENTAS SS Y PAYLOADS GITHUB" -ForegroundColor Cyan
-    $tools = @(
+    Write-Host "       [ ❖ ] APLICACIONES (.EXE)" -ForegroundColor Red
+    $toolsApp = @(
         [PSCustomObject]@{ Id=1; Name="System Informer"; Type="EXE"; Url="https://sourceforge.net/projects/systeminformer/files/latest/download" }
         [PSCustomObject]@{ Id=2; Name="JournalTrace"; Type="EXE"; Url="https://github.com/ponei/JournalTrace/releases/download/1.0/JournalTrace.exe" }
+    )
+    foreach ($t in $toolsApp) { Write-Host ("       [ {0} ] {1,-35}" -f $t.Id, $t.Name) -ForegroundColor White }
+    
+    Write-Host "`n       [ ❖ ] SCRIPTS Y PAYLOADS (.PS1)" -ForegroundColor Red
+    $toolsPs = @(
         [PSCustomObject]@{ Id=3; Name="Lilith Services (Payload)"; Type="PS1"; Url="https://raw.githubusercontent.com/praiselily/lilith-ps/refs/heads/main/Services.ps1" }
         [PSCustomObject]@{ Id=4; Name="Ordiff Kill ScreenRec (Payload)"; Type="PS1"; Url="https://raw.githubusercontent.com/Orbdiff/powershell/refs/heads/main/kill-screen-processes.ps1" }
+    )
+    foreach ($t in $toolsPs) { Write-Host ("       [ {0} ] {1,-35}" -f $t.Id, $t.Name) -ForegroundColor White }
+
+    Write-Host "`n       [ ❖ ] RUTAS DEL SISTEMA (WIN+R)" -ForegroundColor Red
+    $toolsWin = @(
         [PSCustomObject]@{ Id=5; Name="Carpeta Papelera Oculta"; Type="WIN"; Cmd="C:\`$Recycle.bin" }
         [PSCustomObject]@{ Id=6; Name="Editor de Registro (Regedit)"; Type="WIN"; Cmd="regedit" }
         [PSCustomObject]@{ Id=7; Name="Carpeta Prefetch"; Type="WIN"; Cmd="C:\Windows\Prefetch" }
     )
+    foreach ($t in $toolsWin) { Write-Host ("       [ {0} ] {1,-35}" -f $t.Id, $t.Name) -ForegroundColor White }
     
-    foreach ($t in $tools) { Write-Host ("       [ {0} ] {1,-35} ({2})" -f $t.Id, $t.Name, $t.Type) -ForegroundColor White }
-    
+    $allTools = $toolsApp + $toolsPs + $toolsWin
+
     $choice = [string](Read-Host "`n       [COMANDO] Ingresa el ID para ejecutar (o 0 para salir)")
-    if ($choice -ne "0" -and ($tools | Where-Object { $_.Id.ToString() -eq $choice.Trim() })) {
-        $sel = $tools | Where-Object { $_.Id.ToString() -eq $choice.Trim() }
+    if ($choice -ne "0" -and ($allTools | Where-Object { $_.Id.ToString() -eq $choice.Trim() })) {
+        $sel = $allTools | Where-Object { $_.Id.ToString() -eq $choice.Trim() }
         Write-Host "       [*] Ejecutando $($sel.Name)..." -ForegroundColor Yellow
         
         if ($sel.Type -eq "EXE") {
@@ -596,7 +654,7 @@ function Start-Hubs {
 }
 
 # ------------------------------------------------------------
-# EASTER EGG: EL DOXEO TROLL MEJORADO (VIRUS INJECTION)
+# EASTER EGG: EL DOXEO TROLL (VIRUS INJECTION)
 # ------------------------------------------------------------
 function Invoke-Screamer {
     $origBG = $Host.UI.RawUI.BackgroundColor
@@ -608,29 +666,6 @@ function Invoke-Screamer {
 
     Write-Host "`n       [!] ADVERTENCIA: INICIANDO VULNERACIÓN DE SISTEMA..." -ForegroundColor Red
     Start-Sleep -Seconds 1
-
-    $hackingAscii = @"
-       ██╗  ██╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗ ██████╗ 
-       ██║  ██║██╔══██╗██╔════╝██║ ██╔╝██║████╗  ██║██╔════╝ 
-       ███████║███████║██║     █████╔╝ ██║██╔██╗ ██║██║  ███╗
-       ██╔══██║██╔══██║██║     ██╔═██╗ ██║██║╚██╗██║██║   ██║
-       ██║  ██║██║  ██║╚██████╗██║  ██╗██║██║ ╚████║╚██████╔╝
-       ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ 
-        ██╗   ██╗ ██████╗ ██╗   ██╗██████╗                    
-        ╚██╗ ██╔╝██╔═══██╗██║   ██║██╔══██╗                   
-         ╚████╔╝ ██║   ██║██║   ██║██████╔╝                   
-          ╚██╔╝  ██║   ██║██║   ██║██╔══██╗                   
-           ██║   ╚██████╔╝╚██████╔╝██║  ██║                   
-           ╚═╝    ╚═════╝  ╚═════╝ ╚═╝  ╚═╝                   
-    ██████╗ ██████╗ ███╗   ███╗██████╗ ██╗   ██╗████████╗███████╗██████╗ 
-    ██╔════╝██╔═══██╗████╗ ████║██╔══██╗██║   ██║╚══██╔══╝██╔════╝██╔══██╗
-    ██║     ██║   ██║██╔████╔██║██████╔╝██║   ██║   ██║   █████╗  ██████╔╝
-    ██║     ██║   ██║██║╚██╔╝██║██╔═══╝ ██║   ██║   ██║   ██╔══╝  ██╔══██╗
-    ╚██████╗╚██████╔╝██║ ╚═╝ ██║██║     ╚██████╔╝   ██║   ███████╗██║  ██║
-     ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚═╝      ╚═════╝    ╚═╝   ╚══════╝╚═╝  ╚═╝
-"@
-    Write-Host $hackingAscii -ForegroundColor Red
-    Start-Sleep -Seconds 2
 
     Write-Host "`n       [❖] BRUTEFORCING KERNEL HASH..." -ForegroundColor Yellow
     for ($i=0; $i -lt 30; $i++) {
@@ -644,39 +679,30 @@ function Invoke-Screamer {
     Write-Host "       [+] Bypass de firewall y Windows Defender completado..." -ForegroundColor Green
     Start-Sleep -Milliseconds 600
 
-    $uName = $env:USERNAME
-    if ($uName.Length -gt 25) { $uName = $uName.Substring(0, 22) + "..." }
-    $fakeIP = "192.168.$((Get-Random -Min 0 -Max 255)).$((Get-Random -Min 2 -Max 254))"
-    $mac = "{0:X2}-{1:X2}-{2:X2}-{3:X2}-{4:X2}-{5:X2}" -f (Get-Random -Max 256),(Get-Random -Max 256),(Get-Random -Max 256),(Get-Random -Max 256),(Get-Random -Max 256),(Get-Random -Max 256)
-
-    Write-Host "`n       ╔════ [ INFORMACIÓN IP EXTRAÍDA Y COMPROMETIDA ] $($("═" * ($script:BoxW - 57)))╗" -ForegroundColor Cyan
-    Write-Host ("       ║ > USUARIO : " + $uName).PadRight($script:BoxW + 7) + "║" -ForegroundColor Green
-    Write-Host ("       ║ > IPV4    : " + $fakeIP).PadRight($script:BoxW + 7) + "║" -ForegroundColor Green
-    Write-Host ("       ║ > MAC     : " + $mac).PadRight($script:BoxW + 7) + "║" -ForegroundColor Green
-    Write-Host ("       ║ > ESTADO  : TOMANDO CONTROL DE LA MÁQUINA...").PadRight($script:BoxW + 7) + "║" -ForegroundColor Red
-    Write-Host "       ╚$($("═" * $script:BoxW))╝" -ForegroundColor Cyan
-
-    Start-Sleep -Seconds 1
-
-    Write-Host "`n       ╔════ [ HACKEANDO Y BORRANDO SISTEMA ] $($("═" * ($script:BoxW - 39)))╗" -ForegroundColor Red
+    Write-Host "`n       ╔════ [ EXTRACCIÓN DE DATOS PRIVADOS ] $($("═" * ($script:BoxW - 41)))╗" -ForegroundColor Red
     for ($i = 0; $i -lt 35; $i++) {
-        $binLine = -join ((1..45) | ForEach-Object { Get-Random -Min 0 -Max 2 })
-        $binStr = $binLine -replace '0','0 ' -replace '1','1 '
-        Write-Host ("       ║ " + $binStr.PadRight($script:BoxW - 2)) + "║" -ForegroundColor DarkGreen
+        $n = @("John Doe", "Alex Smith", "Maria Garcia", "David Johnson", "Emma Williams", "Liam Brown", "Carlos Ruiz", "Sofia Martinez", "William Davis", "Olivia Garcia") | Get-Random
+        $ip = "$((Get-Random -Min 11 -Max 255)).$((Get-Random -Min 0 -Max 255)).$((Get-Random -Min 0 -Max 255)).$((Get-Random -Min 1 -Max 255))"
+        $phone = "+$((Get-Random -Min 1 -Max 99)) $((Get-Random -Min 100 -Max 999)) $((Get-Random -Min 1000 -Max 9999))"
+        $pass = -join ((33..122) | Get-Random -Count 10 | % {[char]$_})
         
-        if ($i % 3 -eq 0) {
+        $line = " > TARGET: $n | IP: $ip | PHONE: $phone | PASS: $pass"
+        if ($line.Length -gt ($script:BoxW - 2)) { $line = $line.Substring(0, $script:BoxW - 5) + "..." }
+        Write-Host ("       ║ " + $line.PadRight($script:BoxW - 2)) + "║" -ForegroundColor DarkYellow
+        
+        if ($i % 4 -eq 0) {
             $fakeFiles = @("hal.dll", "ntoskrnl.exe", "bootmgr", "winload.efi", "explorer.exe", "cmd.exe", "winlogon.exe", "lsass.exe", "svchost.exe", "kernel32.dll")
             $f = $fakeFiles | Get-Random
             $delStr = " [!] DELETING C:\Windows\System32\$f ... OK"
             Write-Host ("       ║" + $delStr.PadRight($script:BoxW - 1)) + "║" -ForegroundColor Red
         }
-        Start-Sleep -Milliseconds 50
+        Start-Sleep -Milliseconds 60
     }
     Write-Host "       ╚$($("═" * $script:BoxW))╝" -ForegroundColor Red
 
     Start-Sleep -Seconds 1
 
-    # NUEVA PANTALLA DE VIRUS CUSTOM (Reemplazo del BSOD)
+    # NUEVA PANTALLA DE VIRUS CUSTOM 
     $Host.UI.RawUI.BackgroundColor = "Black"
     $Host.UI.RawUI.ForegroundColor = "Red"
     Clear-Host
@@ -715,11 +741,21 @@ function Invoke-Screamer {
 
     Start-Sleep -Seconds 5
 
-    # Regreso a la normalidad
     $Host.UI.RawUI.BackgroundColor = "Black"
     $Host.UI.RawUI.ForegroundColor = "Green"
     Clear-Host
-    Write-Host "`n`n`n       [+] Es una broma. Ningún dato fue robado ni infectado. Relájate ;)`n" -ForegroundColor Green
+    Write-Host "`n`n`n"
+    Write-Host @"
+              ██╗  ██╗ █████╗  ██████╗██╗  ██╗██╗███╗   ██╗ ██████╗ 
+              ██║  ██║██╔══██╗██╔════╝██║ ██╔╝██║████╗  ██║██╔════╝ 
+              ███████║███████║██║     █████╔╝ ██║██╔██╗ ██║██║  ███╗
+              ██╔══██║██╔══██║██║     ██╔═██╗ ██║██║╚██╗██║██║   ██║
+              ██║  ██║██║  ██║╚██████╗██║  ██╗██║██║ ╚████║╚██████╔╝
+              ╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝ ╚═════╝ 
+        
+             >>> HACKING COMPLETED, PLEASE DO NOT CLOSE THIS <<<
+                >>> OTHERWISE WE WILL INSERT 100 VIRUSES <<<
+"@ -ForegroundColor Green
     
     $Host.UI.RawUI.BackgroundColor = $origBG
     $Host.UI.RawUI.ForegroundColor = $origFG
@@ -744,53 +780,6 @@ function Show-MainMenu {
         $script:FirstRun = $false
     }
 
-    $sideGirl = @(
-        "                                                     .::---:               ::"
-        "                                                    =-..-::-*=            -+.   -+-"
-        "                                                   -: =.     :+          :=+   ==="
-        "                                                  :+ .*       =:        ===-::.==."
-        "                                                   -: +                :. ..:. -.=.     .."
-        "                                                    =--=       .....  =:   .=  ==+-   .:++."
-        "                                                     .-==.    =:...::-:    -.   :*-. :==-."
-        "                                                        -=-. .+       :=-     :-: .=:=.+"
-        "                                                          .:=---::::.   -=+:  .  .--.=.  "
-        "                                                       :----:  ::.  :=:   :=-:   -  :=:::."
-        "                                                     :-.:...::- :- ::::=:  -=.: :-.=-----+"
-        "                                                    =. -: :..   . .:    ==  .-.  +-::+."
-        "                                                  --. =.  .   :    =:    *+  -+=:..:=:"
-        "                                            :---::. -:  -   :+:  =  =:    ++  .+ ..---"
-        "                                             .---::...-.  :-:=  .+   =    .==  --. ..++"
-        "                                            ---:.   :. .--..-+  :=    --.   =+.  +.:-:-+"
-        "                                            =..: :=--=+-===..-  -..: = :--:.:=-  .=. *+."
-        "                                            *.* -=  *-*..**=  : =..+.=:.   ..=.   .+ :*-"
-        "                                            .--.+:  =-*.  .    :--@*=+=:.-=  :=    =:+:+"
-        "                                              =:*:-. .+=     .    --.-=:  :-  +    -:=-"
-        "                                              :.  ..=-  =-  :::    :-=-    .+=-    --+"
-        "                                                   =-..  .-::..::--= ...-:-.-.     ==."
-        "                                                  .=: :. -+:::+-..+..+. -==.      :+"
-        "                                                    ::=--=.---+- .-=:=.. ..       :"
-        "                                               .:-::--=: :+:.--*--+=. .:=:::"
-        "                                              =:-:..:.:.  -..-.... :.:  .  --"
-        "                                          .-=-  +=:.=::: .+: .==:=.:-+      =:"
-        "                                          =-:. .+ ..  .  .+-:  .-=.=:-     ..+:"
-        "                                              ::--. .:.    .-:.    .:-.   .      :-"
-        "                                               .--=:.     =-.    .+:          .:"
-        "                                                .-::.    .+:     =.          ."
-        "                                                 .-==:  .=.     =.        .:"
-        "                                                    :=--+     -=      .-:"
-        "                                                      .+:    .+.    .:"
-        "                                                      :=    .=.   .-"
-        "                                                       =.   +."
-        "                                                       -=  -=  .:"
-        "                                                        +. +.  ="
-        "                                                       -=+  .+"
-        "                                                         +:  ="
-        "                                                         :=  +"
-        "                                                          +:-"
-        "                                                          :=."
-        "                                                         .::"
-    )
-
     while ($true) {
         try {
             Show-Banner
@@ -809,17 +798,22 @@ function Show-MainMenu {
             )
 
             $gap = " "
-            $totalLines = [math]::Max($menuLines.Count, $sideGirl.Count)
+            $totalLines = [math]::Max($menuLines.Count, $script:sideGirl.Count)
 
             for ($i = 0; $i -lt $totalLines; $i++) {
                 if ($i -lt $menuLines.Count) {
                     $left = $menuLines[$i]
-                    if ($left -match "╔|║|╚|╠|═|─") {
-                        Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor DarkCyan
-                    } elseif ($left -match "⚠ NO TOCAR ⚠") {
+                    if ($left -match "╔|╚|═|─") {
+                        Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor DarkRed
+                    } elseif ($left -match "MODULO CENTRAL DE INTERVENCION") {
                         Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor Red
+                    } elseif ($left -match "⚠ NO TOCAR ⚠") {
+                        Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor DarkRed
+                    } elseif ($left -match "\[") {
+                        # El texto de las opciones en blanco para resaltar del hub
+                        Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor White
                     } else {
-                        Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor Cyan
+                        Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor DarkRed
                     }
                 } else {
                     Write-Host (" " * $script:BoxW) -NoNewline
@@ -827,8 +821,8 @@ function Show-MainMenu {
                 
                 Write-Host $gap -NoNewline
 
-                if ($i -lt $sideGirl.Count) {
-                    $girlLine = $sideGirl[$i].TrimEnd()
+                if ($i -lt $script:sideGirl.Count) {
+                    $girlLine = $script:sideGirl[$i].TrimEnd()
                     if ($i -ge 12 -and $i -le 24) { Write-Host $girlLine -ForegroundColor DarkCyan } 
                     elseif ($i -gt 24 -and $i -le 48) { Write-Host $girlLine -ForegroundColor Cyan } 
                     else { Write-Host $girlLine -ForegroundColor DarkMagenta }
