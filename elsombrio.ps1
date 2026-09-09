@@ -3,7 +3,7 @@ chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V41 - COLOR PREFETCH & SKULL)
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V42 - TROLL REALISTA)
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods"
@@ -299,7 +299,6 @@ function Show-DetectionBox {
             if ($displayStr.Length -gt 67) { $displayStr = $displayStr.Substring(0, 64) + "..." }
             $itemStr = (" > " + $displayStr).PadRight(71, ' ')
             
-            # Lógica de Color Dinámica (Verde para Normal, Rojo para Hacks, Cian para Java)
             $textColor = "Yellow"
             if ($item -match "HACK|TE VAS BAN|ILEGAL|PELIGRO") { $textColor = "Red" }
             elseif ($item -match "\[JAVA\]|java\.exe|javaw\.exe|lunarclient") { $textColor = "Cyan" }
@@ -314,7 +313,6 @@ function Show-DetectionBox {
         Write-Host "`n       [ ❖ ] LOG DETALLADO Y RUTAS:" -ForegroundColor Cyan
         Write-Host "       ─────────────────────────────────────────────────────────────────────────" -ForegroundColor DarkGray
         foreach ($item in $Detections) { 
-            # Mismos colores para el registro detallado inferior
             $textColor = "Gray"
             if ($item -match "HACK|TE VAS BAN|ILEGAL|PELIGRO") { $textColor = "Red" }
             elseif ($item -match "\[JAVA\]|java\.exe|javaw\.exe|lunarclient") { $textColor = "Cyan" }
@@ -505,86 +503,125 @@ function Start-DiffKiller {
     Pause-Scanner
 }
 
+
 # ------------------------------------------------------------
-# EASTER EGG: EL DOXEO TROLL CON CALAVERA
+# EASTER EGG: EL DOXEO TROLL MEJORADO (CUADROS E IPs)
 # ------------------------------------------------------------
 function Invoke-Screamer {
     $origBG = $Host.UI.RawUI.BackgroundColor
     $origFG = $Host.UI.RawUI.ForegroundColor
 
+    # Pantalla roja de alerta inicial
+    for ($i = 0; $i -lt 4; $i++) {
+        $Host.UI.RawUI.BackgroundColor = if ($i % 2 -eq 0) { "Red" } else { "Black" }
+        Clear-Host
+        try { [console]::Beep(1000, 80) } catch {}
+        Start-Sleep -Milliseconds 80
+    }
+
     $Host.UI.RawUI.BackgroundColor = "Black"
     $Host.UI.RawUI.ForegroundColor = "Green"
     Clear-Host
 
-    Write-Host "`n [!] ADVERTENCIA: INICIANDO VULNERACIÓN DE SISTEMA..." -ForegroundColor Red
+    # Adaptar variables para no deformar el cuadro
+    $uName = $env:USERNAME
+    if ($uName.Length -gt 25) { $uName = $uName.Substring(0, 22) + "..." }
+    $osName = (Get-CimInstance Win32_OperatingSystem).Caption
+    if ($osName.Length -gt 45) { $osName = $osName.Substring(0, 42) + "..." }
+
+    Write-Host "       ╔═══════════════════════════════════════════════════════════════════════╗" -ForegroundColor Green
+    Write-Host "       ║               [!] BYPASS DE SEGURIDAD COMPLETADO [!]                  ║" -ForegroundColor Red
+    Write-Host "       ╠═══════════════════════════════════════════════════════════════════════╣" -ForegroundColor Green
+    Write-Host ("       ║ > OBJETIVO   : " + $uName).PadRight(79) + "║" -ForegroundColor Green
+    Write-Host ("       ║ > SISTEMA    : " + $osName).PadRight(79) + "║" -ForegroundColor Green
+    Write-Host ("       ║ > PRIVILEGIOS: NT AUTHORITY\SYSTEM (ESCALADO)").PadRight(79) + "║" -ForegroundColor Green
+    Write-Host ("       ║ > ESTADO     : EXTRACCIÓN DE DATOS EN CURSO...").PadRight(79) + "║" -ForegroundColor Green
+    Write-Host "       ╚═══════════════════════════════════════════════════════════════════════╝" -ForegroundColor Green
+    
     Start-Sleep -Seconds 1
-    Write-Host " [+] Bypass de firewall completado..." -ForegroundColor Green
-    Start-Sleep -Milliseconds 600
-    Write-Host " [+] Extrayendo credenciales de red y tokens de Discord..." -ForegroundColor Yellow
-    Start-Sleep -Milliseconds 800
+    Write-Host "`n       [+] INICIANDO VOLCADO DE RED Y ARCHIVOS..." -ForegroundColor Yellow
+    Start-Sleep -Milliseconds 500
 
-    # Lluvia de IP y Hex falsos
-    for ($i = 0; $i -lt 150; $i++) {
+    Write-Host "       ╔════ [ TRÁFICO DE RED E INTERCEPTACIÓN DE PAQUETES ] ══════════════════╗" -ForegroundColor DarkGray
+    for ($i = 0; $i -lt 55; $i++) {
         $randIP = "$((Get-Random -Min 11 -Max 255)).$((Get-Random -Min 0 -Max 255)).$((Get-Random -Min 0 -Max 255)).$((Get-Random -Min 1 -Max 255))"
-        $randHex = -join ((48..57) + (65..70) | Get-Random -Count 8 | % {[char]$_})
-        $randPort = Get-Random -Min 1024 -Max 65535
-        Write-Host " [DATA] IP_TARGET: $randIP | PORT: $randPort | HASH: $randHex | BYTES: $((Get-Random -Min 1000 -Max 99999))"
-        Start-Sleep -Milliseconds 10
+        $randHex = -join ((48..57) + (65..70) | Get-Random -Count 12 | % {[char]$_})
+        $file = @("chrome_logins.db", "discord_token.ldb", "sys_passwords.txt", "sam_dump.hive", "wallet.dat") | Get-Random
+        
+        $str = "       ║ [DATA] IP: $randIP -> EXTRACCIÓN: $file | HASH: $randHex"
+        Write-Host $str.PadRight(79) + "║" -ForegroundColor Green
+        Start-Sleep -Milliseconds 25
     }
+    Write-Host "       ╚═══════════════════════════════════════════════════════════════════════╝" -ForegroundColor DarkGray
 
-    Write-Host "`n [+] Volcando historial de navegación de C:\Users\$env:USERNAME\ ..." -ForegroundColor Yellow
-    for ($i = 0; $i -lt 30; $i++) {
-        $fakePaths = @(
-            "C:\Users\$env:USERNAME\AppData\Local\Google\Chrome\User Data\Default\Login Data",
-            "C:\Users\$env:USERNAME\AppData\Roaming\Discord\Local Storage\leveldb\",
-            "C:\Users\$env:USERNAME\Documents\contraseñas.txt",
-            "C:\Users\$env:USERNAME\Pictures\Camera Roll\",
-            "C:\Users\$env:USERNAME\Downloads\archivos_privados.zip"
-        )
-        $path = $fakePaths | Get-Random
-        Write-Host " [UPLOAD] Cifrando y enviando: $path -> PAQUETE_$((Get-Random -Min 100 -Max 999))" -ForegroundColor Cyan
-        Start-Sleep -Milliseconds 40
+    Start-Sleep -Milliseconds 500
+
+    Write-Host "`n       [!] EJECUTANDO PROTOCOLO DE DESTRUCCIÓN LOCAL..." -ForegroundColor Red
+    for ($i = 1; $i -le 100; $i+=3) {
+        $fileStr = -join ((97..122) | Get-Random -Count 8 | % {[char]$_})
+        $pct = $i
+        if ($pct -gt 100) { $pct = 100 }
+        $barLength = 30
+        $filled = [math]::Round(($pct / 100) * $barLength)
+        $pBar = "█" * $filled + "▒" * ($barLength - $filled)
+        
+        Write-Host "`r       [ELIMINANDO System32] [$pBar] $pct% (Borrando: $fileStr.dll)   " -NoNewline -ForegroundColor Red
+        Start-Sleep -Milliseconds 45
     }
+    
+    Write-Host "`n       [!] SISTEMA CORRUPTO. REINICIO INMINENTE.`n" -ForegroundColor Red
+    Start-Sleep -Seconds 1
 
-    # Pantallazo Rojo Final con Calavera
+    # PANTALLAZO ROJO CON LA CALAVERA GIGANTE
     $Host.UI.RawUI.BackgroundColor = "Red"
     $Host.UI.RawUI.ForegroundColor = "Black"
     Clear-Host
 
-    try { [console]::Beep(1500, 800) } catch {}
+    try { [console]::Beep(800, 400); [console]::Beep(600, 600) } catch {}
 
     Write-Host @"
 
-                   .▄▄████████████▄▄.
-                .▄████████████████████▄.
-               ██████████████████████████
-              ████████████████████████████
-              ████████████████████████████
-              ████▀▀▀▀████████████▀▀▀▀████
-              ███      ██████████      ███
-              ███ ▄▄▄▄ ██████████ ▄▄▄▄ ███
-              ████████████████████████████
-              ████████████████████████████
-               ███████ ▄▄▄▄▄▄▄▄▄▄ ███████
-                 █████ ██████████ █████
-                   ███▄▄▄▄▄▄▄▄▄▄▄▄███
-                     ██████████████
+                   uuuuuuu
+               uu$$$$$$$$$$$uu
+            uu$$$$$$$$$$$$$$$$$uu
+           u$$$$$$$$$$$$$$$$$$$$$u
+          u$$$$$$$$$$$$$$$$$$$$$$$u
+         u$$$$$$$$$$$$$$$$$$$$$$$$$u
+         u$$$$$$$$$$$$$$$$$$$$$$$$$u
+         u$$$$$$"   "$$$"   "$$$$$$u
+         "$$$$"      u$u       $$$$"
+          $$$u       u$u       u$$$
+          $$$u      u$$$u      u$$$
+           "$$$$uu$$$   $$$uu$$$$"
+            "$$$$$$$"   "$$$$$$$"
+              u$$$$$$$u$$$$$$$u
+               u$"$"$"$"$"$"$u
+    uuu        $$u$ $ $ $ $u$$       uuu
+   u$$$$        $$$$$u$u$u$$$       u$$$$
+    $$$$$uu      "$$$$$$$$$"     uu$$$$$$
+  u$$$$$$$$$$$uu    """""    uuuu$$$$$$$$$$
+  $$$$"""$$$$$$$$$$uuu   uu$$$$$$$$$"""$$$"
+   """      ""$$$$$$$$$$$uu ""$"""
+             uuuu ""$$$$$$$$$$uuu
+    u$$$uuu$$$$$$$$$uu ""$$$$$$$$$$$uuu$$$
+    $$$$$$$$$$"""           ""$$$$$$$$$$$"
+     "$$$$$"                      ""$$$$""
+       $$$"                         $$$$"
 
         ████████████████████████████████████████████████
-        █                                              █
         █              ¡TE VOY A HACKEAR!              █
         █     TODOS TUS DATOS HAN SIDO COMPROMETIDOS   █
-        █                                              █
         ████████████████████████████████████████████████
 
 "@
 
     Start-Sleep -Seconds 3
 
+    # Regreso a la normalidad
     $Host.UI.RawUI.BackgroundColor = "Black"
     $Host.UI.RawUI.ForegroundColor = "Green"
     Clear-Host
-    Write-Host "`n       [+] Es una broma. Ningún dato fue robado. Relájate ;)`n" -ForegroundColor Green
+    Write-Host "`n       [+] Es una broma. Ningún dato fue robado ni borrado. Relájate ;)`n" -ForegroundColor Green
     
     $Host.UI.RawUI.BackgroundColor = $origBG
     $Host.UI.RawUI.ForegroundColor = $origFG
