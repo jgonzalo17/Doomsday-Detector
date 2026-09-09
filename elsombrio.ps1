@@ -3,7 +3,7 @@ chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V31)
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V34 - STRICT AUDIT)
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods"
@@ -21,10 +21,6 @@ $script:IllegalKeywords = @(
     "aimbot", "killaura", "reach", "fly", "scaffold", "criticals", "jclicker", "ghostclicker",
     "meteor", "wurst", "aristois", "bleachhack", "mathax", "liquidbounce", 
     "raven", "vape", "novoline", "flux", "impact", "inertia", "kami", "krypton"
-)
-
-$script:DoomsdayStrings = @(
-    "lYgKfQhaCkHofBf", "?WHt4Y", "!hi!kGD@<nS", "%#ksghCP$NIS7$EQuX", "jnativehook"
 )
 
 $script:WindowsServices = @("dps", "appinfo", "pcasvc", "eventlog", "sysmain", "dusmsvc", "bam")
@@ -61,29 +57,6 @@ if (-not ([System.Management.Automation.PSTypeName]'SombrioDecompressor').Type) 
         }
 "@
     } catch { }
-}
-
-function Get-SafeBytes {
-    param([string]$Path)
-    try { $bytes = [System.IO.File]::ReadAllBytes($Path) } 
-    catch {
-        try {
-            $tempFile = "$env:TEMP\sombrio_scan_$([guid]::NewGuid()).tmp"
-            Copy-Item -Path $Path -Destination $tempFile -Force -ErrorAction Stop
-            $bytes = [System.IO.File]::ReadAllBytes($tempFile)
-            Remove-Item $tempFile -Force -ErrorAction SilentlyContinue
-        } catch { return $null }
-    }
-    
-    if ($null -ne $bytes -and $bytes.Length -ge 8) {
-        if ($bytes[0] -eq 0x4D -and $bytes[1] -eq 0x41 -and $bytes[2] -eq 0x4D) {
-            if (([System.Management.Automation.PSTypeName]'SombrioDecompressor').Type) {
-                $decomp = [SombrioDecompressor]::Decompress($bytes)
-                if ($null -ne $decomp) { return $decomp }
-            }
-        }
-    }
-    return $bytes
 }
 
 # ============================================================
@@ -215,7 +188,6 @@ function Show-BootAnimation {
             elseif ($lineNum -gt 24 -and $lineNum -le 48) { $c = "Blue" }
             elseif ($lineNum -gt 48) { $c = "Cyan" }
             else { $c = "DarkBlue" }
-
             Write-Host ($floatSpaces + $line.TrimEnd()) -ForegroundColor $c
             $lineNum++
         }
@@ -280,12 +252,22 @@ function Show-DetectionBox {
         Write-Host "     ║ No se detectaron anomalías en este escaneo.                  ║" -ForegroundColor Green
     } else {
         foreach ($item in $Detections) {
-            if ($item.Length -gt 56) { $item = $item.Substring(0, 53) + "..." }
-            $itemStr = (" > " + $item).PadRight(60, ' ')
+            # Se permite más longitud si es necesario, pero truncamos visualmente a 56 caracteres para no romper el recuadro
+            $displayStr = $item
+            if ($displayStr.Length -gt 56) { $displayStr = $displayStr.Substring(0, 53) + "..." }
+            $itemStr = (" > " + $displayStr).PadRight(60, ' ')
             Write-Host "     ║$itemStr║" -ForegroundColor Yellow
         }
     }
     Write-Host "     ╚══════════════════════════════════════════════════════════════╝" -ForegroundColor Red
+    
+    # Imprimir rutas completas debajo del recuadro para no romperlo visualmente
+    if ($Detections.Count -gt 0) {
+        Write-Host "`n     [LOG COMPLETO DE RUTAS DETECTADAS]" -ForegroundColor DarkGray
+        foreach ($item in $Detections) {
+            Write-Host "     $item" -ForegroundColor Gray
+        }
+    }
 }
 
 function Test-Administrator { return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }
@@ -320,18 +302,41 @@ function Start-DoomsdayMemoryScan {
 }
 
 function Start-SystemScan {
-    Show-Header "INTERVENCIÓN RÁPIDA (PREFETCH Y BAM)"
-    if (-not (Test-Administrator)) { Write-Host "     [!] Se requieren privilegios de Administrador para leer BAM."; Pause-Scanner; return }
-    $hallazgosAlertas = [System.Collections.Generic.List[string]]::new()
-    $bamPath = "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\UserSettings\*"
-    foreach ($entry in (Get-ItemProperty $bamPath -ErrorAction SilentlyContinue)) {
-        foreach ($p in ($entry.psobject.properties | Where-Object { $_.Name -match "^[a-zA-Z]:\\" })) {
-            if ($p.Name.ToLower() -match "click|autoclick|macro|jclicker|ghostclicker|meteor|totem|autototem") {
-                $hallazgosAlertas.Add("BAM Oculto: $(Split-Path $p.Name -Leaf)")
+    Show-Header "INTERVENCIÓN RÁPIDA (PREFETCH / EJECUCIONES DE HOY)"
+    if (-not (Test-Administrator)) { Write-Host "     [!] Se requieren privilegios de Administrador para ver Prefetch."; Pause-Scanner; return }
+    
+    # Evaluar Estado de Prefetch
+    try {
+        $pfVal = Get-ItemPropertyValue -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters" -Name "EnablePrefetcher" -ErrorAction SilentlyContinue
+        if ($pfVal -eq 0) { Write-Host "     [*] Motor Prefetch: DESHABILITADO (Sospechoso/Borrado)" -ForegroundColor Red }
+        elseif ($pfVal -eq 3) { Write-Host "     [*] Motor Prefetch: HABILITADO (Normal)" -ForegroundColor Green }
+        else { Write-Host "     [*] Motor Prefetch: MODIFICADO (Valor: $pfVal)" -ForegroundColor Yellow }
+    } catch { Write-Host "     [*] Motor Prefetch: NO SE PUDO LEER ESTADO" -ForegroundColor Yellow }
+
+    $hallazgos = [System.Collections.Generic.List[string]]::new()
+    $list = @()
+    
+    # Obtener prefetch de las últimas 24 hrs, ordenar por hora descendente, tomar los 30 primeros
+    $pfFiles = Get-ChildItem -Path "C:\Windows\Prefetch" -Filter "*.pf" -ErrorAction SilentlyContinue
+    if ($pfFiles) {
+        $pfFiles | Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-1) } | 
+        ForEach-Object { $list += [PSCustomObject]@{ Time = $_.LastWriteTime; Name = $_.Name; FullName = $_.FullName } }
+        
+        $list = $list | Sort-Object Time -Descending | Select-Object -First 30
+        
+        foreach ($item in $list) {
+            $timeStr = $item.Time.ToString("HH:mm:ss")
+            if ($item.Name.ToLower() -match "click|autoclick|macro|jclicker|ghost|meteor|totem|vape|dooms|inject") {
+                $hallazgos.Add(">> [ALERTA] [$timeStr] $($item.Name) - te vas ban")
+            } else {
+                $hallazgos.Add("[$timeStr] $($item.Name)")
             }
         }
+    } else {
+         $hallazgos.Add("[!] Carpeta Prefetch vacía o bloqueada.")
     }
-    Show-DetectionBox -Detections $hallazgosAlertas -Title "ALERTAS CRÍTICAS EN PREFETCH Y BAM"
+    
+    Show-DetectionBox -Detections $hallazgos -Title "ÚLTIMOS 30 EJECUTADOS (MÁS RECIENTE A ANTIGUO)"
     Pause-Scanner
 }
 
@@ -340,11 +345,16 @@ function Start-RecycleBinScan {
     $hallazgosPapelera = [System.Collections.Generic.List[string]]::new()
     try {
         $shell = New-Object -ComObject Shell.Application
-        foreach ($item in $shell.NameSpace(10).Items()) {
-            if ($item.Name.ToLower() -match "click|macro|ghost|meteor|totem|vape") { $hallazgosPapelera.Add("HACK BORRADO: $($item.Name)") }
+        $papelera = $shell.NameSpace(10)
+        foreach ($item in $papelera.Items()) {
+            if ($item.Name.ToLower() -match "click|macro|ghost|meteor|totem|vape|dooms") { 
+                $hallazgosPapelera.Add(">> [HACK BORRADO] $($item.Name) - te vas ban") 
+            } else {
+                $hallazgosPapelera.Add("[ELIMINADO] $($item.Name)")
+            }
         }
     } catch {}
-    Show-DetectionBox -Detections $hallazgosPapelera -Title "HACKS DETECTADOS EN LA PAPELERA"
+    Show-DetectionBox -Detections $hallazgosPapelera -Title "LISTA DE ARCHIVOS ELIMINADOS"
     Pause-Scanner
 }
 
@@ -356,7 +366,7 @@ function Start-MacroAudit {
         "$env:USERPROFILE\AppData\Local\LGHUB\settings.db",
         "C:\Program Files (x86)\Bloody7\Bloody7\Data\Mouse\English\ScriptsMacros\GunLib\"
     )
-    foreach ($p in $pathsToCheck) { if (Test-Path $p) { $hallazgosMacros.Add("Detectado: $(Split-Path $p -Leaf)") } }
+    foreach ($p in $pathsToCheck) { if (Test-Path $p) { $hallazgosMacros.Add("Detectado: $(Split-Path $p -Leaf) | Ruta: $p") } }
     Show-DetectionBox -Detections $hallazgosMacros -Title "SOFTWARE DE MACROS DETECTADO"
     Pause-Scanner
 }
@@ -384,19 +394,6 @@ function Show-WindowsServices {
         }
     }
     Show-DetectionBox -Detections $hallazgosSvc -Title "ALERTAS DE SERVICIOS"
-    Pause-Scanner
-}
-
-function Start-DllScan {
-    Show-Header "ANÁLISIS DE DLLs MODIFICADAS"
-    if (-not (Test-Administrator)) { Write-Host "     [!] Se requiere Administrador."; Pause-Scanner; return }
-    $hallazgosDLL = [System.Collections.Generic.List[string]]::new()
-    foreach ($file in (Get-ChildItem -Path "$env:SystemRoot\System32" -Filter "*.dll" -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-30) })) {
-        if ((Get-AuthenticodeSignature $file.FullName -ErrorAction SilentlyContinue).Status -ne 'Valid') {
-            $hallazgosDLL.Add("$($file.Name) (Sin Firma)")
-        }
-    }
-    Show-DetectionBox -Detections $hallazgosDLL -Title "DLLs ANÓMALAS (ÚLTIMO MES)"
     Pause-Scanner
 }
 
@@ -442,12 +439,37 @@ function Start-RemoteScript {
 }
 
 function Start-FullDiskScan {
-    Show-Header "ANÁLISIS COMPLETO DEL DISCO"
+    Show-Header "ANÁLISIS COMPLETO DEL DISCO (MODIFICADOS Y BORRADOS)"
     $hallazgosDisco = [System.Collections.Generic.List[string]]::new()
-    foreach ($f in (Get-ChildItem -Path "C:\Users" -Recurse -File -Include "*.jar","*.exe","*.dll" -ErrorAction SilentlyContinue | Where-Object { $_.Name -match "clicker|autoclick|ghost|meteor|wurst|vape|raven|dooms" })) {
-        $hallazgosDisco.Add("$($f.Name) | Carpeta: $($f.Directory.Name)")
+    
+    Write-Host "     [*] Escaneando papelera raíz de todos los discos..." -ForegroundColor DarkGray
+    $sid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+    $drives = Get-PSDrive -PSProvider FileSystem | Select-Object -ExpandProperty Root
+    foreach ($drive in $drives) {
+        $recPath = "$drive`$Recycle.Bin\$sid"
+        if (Test-Path $recPath) {
+            Get-ChildItem -Path $recPath -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object {
+                if ($_.Name -match "clicker|autoclick|ghost|meteor|wurst|vape|raven|dooms|inject") {
+                    $hallazgosDisco.Add("[BORRADO-HACK] te vas ban | Ruta: $($_.FullName)")
+                } else {
+                    $hallazgosDisco.Add("[BORRADO] $($_.Name) | Ruta: $($_.FullName)")
+                }
+            }
+        }
     }
-    Show-DetectionBox -Detections $hallazgosDisco -Title "ARCHIVOS SOSPECHOSOS EN DISCO"
+
+    Write-Host "     [*] Escaneando ejecutables/mods modificados en las últimas 48 hrs..." -ForegroundColor DarkGray
+    $regexHacks = "clicker|autoclick|ghost|meteor|wurst|vape|raven|dooms|inject"
+    Get-ChildItem -Path "C:\Users" -Recurse -File -Include "*.jar","*.exe","*.bat" -ErrorAction SilentlyContinue | 
+    Where-Object { $_.LastWriteTime -ge (Get-Date).AddDays(-2) } | ForEach-Object {
+        if ($_.Name -match $regexHacks) {
+            $hallazgosDisco.Add("[MODIFICADO-HACK] te vas ban | Ruta: $($_.FullName)")
+        } else {
+            $hallazgosDisco.Add("[MODIFICADO] $($_.Name) | Ruta: $($_.FullName)")
+        }
+    }
+
+    Show-DetectionBox -Detections $hallazgosDisco -Title "ARCHIVOS MODIFICADOS Y BORRADOS EN DISCO"
     Pause-Scanner
 }
 
@@ -475,8 +497,68 @@ function Start-WinRCommands {
     }
 }
 
+function Start-AdvancedAutoclickScan {
+    Show-Header "BÚSQUEDA PROFUNDA DE AUTOCLICKERS (TODO EL DISCO)"
+    $hallazgos = [System.Collections.Generic.List[string]]::new()
+    
+    $regexNames = "autoclick|gsautoclick|opautoclicker|forgeclick|speedautoclick|macro|clicker|murgee|tinytask|jitbit|fyre|jclicker|ghostclicker"
+    $drives = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 0 } | Select-Object -ExpandProperty Root
+    
+    foreach ($drive in $drives) {
+        Write-Host "     [*] Rastreando el disco $drive (Esto tomará algo de tiempo)..." -ForegroundColor DarkGray
+        Get-ChildItem -Path $drive -Recurse -File -Include "*.exe","*.jar","*.bat","*.ahk","*.vbs","*.py","*.dll" -ErrorAction SilentlyContinue | 
+        Where-Object { $_.Name -match $regexNames } | ForEach-Object {
+            $hallazgos.Add("[AUTOCLICK DETECTADO] te vas ban | Ruta: $($_.FullName)")
+        }
+    }
+    
+    Show-DetectionBox -Detections $hallazgos -Title "AUTOCLICKERS DETECTADOS EN EL SISTEMA"
+    Pause-Scanner
+}
+
+function Start-ExtremeModScan {
+    Show-Header "ANÁLISIS EXTREMO DE MODS E INSTANCIAS"
+    if (-not (Test-Administrator)) { Write-Host "     [!] Se requiere Administrador."; Pause-Scanner; return }
+    
+    $hallazgos = [System.Collections.Generic.List[string]]::new()
+    
+    # 1. Instancias de Java y módulos en memoria
+    Write-Host "     [*] Escaneando JVM e instancias activas en memoria..." -ForegroundColor DarkGray
+    $javaProcs = Get-Process -Name "java", "javaw", "lunarclient" -ErrorAction SilentlyContinue
+    if ($javaProcs) {
+        foreach ($proc in $javaProcs) {
+            # Java siempre en verde
+            Write-Host "     [+] [INSTANCIA] Minecraft/Java corriendo (PID: $($proc.Id))" -ForegroundColor Green
+            try {
+                $proc.Modules | Where-Object { $_.FileName -match "vape|ghost|clicker|inject|jnativehook|killaura|autoclick|macro" } | ForEach-Object {
+                    # Hacks inyectados en rojo y mostrando la ruta exacta
+                    Write-Host "     [!] [PELIGRO - HACK INYECTADO] $($_.ModuleName) - te vas ban" -ForegroundColor Red
+                    Write-Host "         Ruta de instancia: $($_.FileName)" -ForegroundColor Red
+                    $hallazgos.Add("[INYECCIÓN EN RAM] $($_.ModuleName) - te vas ban | Ruta: $($_.FileName)")
+                }
+            } catch {}
+        }
+    } else {
+        Write-Host "     [-] [INSTANCIA] No se detectó Minecraft/Java en ejecución actualmente." -ForegroundColor DarkGray
+    }
+
+    # 2. Modificaciones de Papelera (listar archivos exactos con rutas)
+    Write-Host "     [*] Auditando archivos ocultos y eliminados de Papelera..." -ForegroundColor DarkGray
+    try {
+        $shell = New-Object -ComObject Shell.Application
+        $papelera = $shell.NameSpace(10)
+        foreach ($item in $papelera.Items()) {
+            $hallazgos.Add("[PAPELERA] Nombre: $($item.Name) | Ruta Original: $($item.Path)")
+        }
+    } catch {}
+
+    Show-DetectionBox -Detections $hallazgos -Title "ALERTAS Y HALLAZGOS DEL ESCÁNER EXTREMO"
+    Pause-Scanner
+}
+
+
 # ============================================================
-# MENÚ PRINCIPAL
+# MENÚ PRINCIPAL ESTRUCTURADO Y ALINEADO
 # ============================================================
 function Show-MainMenu {
 
@@ -494,7 +576,7 @@ function Show-MainMenu {
         "                                                    =--=       .....  =:   .=  ==+-   .:++."
         "                                                     .-==.    =:...::-:    -.   :*-. :==-."
         "                                                        -=-. .+       :=-     :-: .=:=.+"
-        "                                                          .:=---::::.   -=+:  .  .--.=."
+        "                                                          .:=---::::.   -=+:  .  .--.=.  "
         "                                                       :----:  ::.  :=:   :=-:   -  :=:::."
         "                                                     :-.:...::- :- ::::=:  -=.: :-.=-----+"
         "                                                    =. -: :..   . .:    ==  .-.  +-::+."
@@ -533,23 +615,20 @@ function Show-MainMenu {
     )
 
     while ($true) {
-
         try {
-
             Show-Banner
-
             $menuLines = @(
                 "       ╔═══════════════════════════════════════════════════════════════════════╗"
                 "       ║                  [ MODULO CENTRAL DE INTERVENCION ]                   ║"
                 "       ╚═══════════════════════════════════════════════════════════════════════╝"
                 "                                                                                "
-                "       [  1  ] Analizar Mods            [  8  ] Análisis DLLs (1 MES)     "
-                "       [  2  ] Doomsday Detector        [  9  ] Hub Herramientas SS       "
-                "       [  3  ] Análisis Prefetch/BAM      [ 10  ] Hub Payloads (GitHub)     "
-                "       [  4  ] Análisis Papelera          [ 11  ] Análisis Completo Disco   "
-                "       [  5  ] Auditoría de Macros        [ 12  ] Rutas Manuales (Win+R)    "
-                "       [  6  ] Killer Screen (Diff)       [ 13  ] Salir de Framework        "
-                "       [  7  ] Servicios Windows                                      "
+                "       [  1  ] Analizar Mods              [  8  ] Hub Herramientas SS       "
+                "       [  2  ] Doomsday Detector          [  9  ] Hub Payloads (GitHub)     "
+                "       [  3  ] Análisis Prefetch/BAM      [ 10  ] Análisis Completo Disco   "
+                "       [  4  ] Análisis Papelera          [ 11  ] Rutas Manuales (Win+R)    "
+                "       [  5  ] Auditoría de Macros        [ 12  ] Autoclick Scanner (ALL)   "
+                "       [  6  ] Killer Screen (Diff)       [ 13  ] Mod & Instancia Extreme   "
+                "       [  7  ] Servicios Windows          [ 14  ] Salir de Framework        "
                 "                                                                                "
                 "       ─────────────────────────────────────────────────────────────────"
             )
@@ -559,33 +638,23 @@ function Show-MainMenu {
             $totalLines = [math]::Max($menuLines.Count, $sideGirl.Count)
 
             for ($i = 0; $i -lt $totalLines; $i++) {
-
                 if ($i -lt $menuLines.Count) {
                     $left = $menuLines[$i]
                     Write-Host $left.PadRight($leftWidth) -NoNewline -ForegroundColor Blue
                 } else {
                     Write-Host (" " * $leftWidth) -NoNewline
                 }
-
                 Write-Host $gap -NoNewline
 
                 if ($i -lt $sideGirl.Count) {
                     $girlLine = $sideGirl[$i].TrimEnd()
-
-                    if ($i -ge 12 -and $i -le 24) {
-                        Write-Host $girlLine -ForegroundColor DarkCyan
-                    } elseif ($i -gt 24 -and $i -le 48) {
-                        Write-Host $girlLine -ForegroundColor Blue
-                    } else {
-                        Write-Host $girlLine -ForegroundColor Cyan
-                    }
-                } else {
-                    Write-Host ""
-                }
+                    if ($i -ge 12 -and $i -le 24) { Write-Host $girlLine -ForegroundColor DarkCyan } 
+                    elseif ($i -gt 24 -and $i -le 48) { Write-Host $girlLine -ForegroundColor Blue } 
+                    else { Write-Host $girlLine -ForegroundColor Cyan }
+                } else { Write-Host "" }
             }
-
             Write-Host ""
-            $option = (Read-Host "       [ROOT] Selecciona un módulo [1-13]").Trim()
+            $option = (Read-Host "       [ROOT] Selecciona un módulo [1-14]").Trim()
 
             switch ($option) {
                 "1"  { Start-FullModScan }
@@ -602,14 +671,15 @@ function Show-MainMenu {
                 "06" { Start-DiffKiller }
                 "7"  { Show-WindowsServices }
                 "07" { Show-WindowsServices }
-                "8"  { Start-DllScan }
-                "08" { Start-DllScan }
-                "9"  { Start-SSToolsHub }
-                "09" { Start-SSToolsHub }
-                "10" { Start-RemoteScript }
-                "11" { Start-FullDiskScan }
-                "12" { Start-WinRCommands }
-                "13" { 
+                "8"  { Start-SSToolsHub }
+                "08" { Start-SSToolsHub }
+                "9"  { Start-RemoteScript }
+                "09" { Start-RemoteScript }
+                "10" { Start-FullDiskScan }
+                "11" { Start-WinRCommands }
+                "12" { Start-AdvancedAutoclickScan }
+                "13" { Start-ExtremeModScan }
+                "14" { 
                     Clear-Host
                     Invoke-Typewriter "`n       [!] CERRANDO CONEXIÓN. HASTA LUEGO, JOAQUÍN.`n" -Color Red
                     return 
