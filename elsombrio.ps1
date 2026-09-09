@@ -3,7 +3,7 @@ chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V58.1 - FIX GLOBAL SCAN)
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V60 - IN-TERMINAL RUNTIME)
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods"
@@ -209,7 +209,7 @@ function Show-Header {
 function Pause-Scanner {
     Write-Host "`n       $($("─" * $script:BoxW))" -ForegroundColor DarkRed
     
-    # Animación Nyan Cat Volando
+    # Nyan Cat Animation
     $colors = @("Red","Yellow","Green","Cyan","Magenta")
     for ($i=0; $i -lt 20; $i++) {
         $c = $colors[$i % $colors.Count]
@@ -231,7 +231,6 @@ function Show-DetectionBox {
     Show-Header "REPORTE DE AUDITORÍA"
     $cW = [math]::Floor(($script:BoxW - 1) / 2) 
 
-    # SFX: Suena alarma solo si detecta algo ilegal
     $hasHacks = ($Detections | Where-Object { $_ -match "HACK|TE VAS BAN|ILEGAL|PELIGRO" })
     if ($hasHacks) {
         try { [console]::Beep(1200, 150); [console]::Beep(800, 150); [console]::Beep(1200, 150); [console]::Beep(800, 150) } catch {}
@@ -302,36 +301,35 @@ function Show-DetectionBox {
 
 function Test-Administrator { return ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }
 
+# ============================================================
+# EJECUCIÓN DIRECTA EN LA MISMA TERMINAL (SIN VENTANAS NUEVAS)
+# ============================================================
 function Start-SafeRemote {
     param([string]$Url, [string]$Title)
     Clear-Host
     Show-Header $Title
-    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     
-    Write-Host "       [ ❖ ] CONECTANDO Y LANZANDO MÓDULO AISLADO..." -ForegroundColor Red
+    Write-Host "       [ ❖ ] DESCARGANDO Y EJECUTANDO SCRIPT EN ESTA TERMINAL..." -ForegroundColor Red
     Write-Host "       $($("─" * $script:BoxW))" -ForegroundColor DarkRed
-    Write-Host "       [*] La herramienta se ejecutará en una NUEVA VENTANA." -ForegroundColor Gray
-    Write-Host "       [*] La ventana NO se cerrará sola. Ciérrala manualmente (en la 'X') cuando termines de leer.`n" -ForegroundColor DarkRed
     
     try {
-        $cmd = "irm '$Url' | iex"
-        Start-Process powershell.exe -ArgumentList "-NoExit -NoProfile -ExecutionPolicy Bypass -Command `"$cmd`"" -Wait
+        $scriptContent = Invoke-RestMethod -Uri $Url -UseBasicParsing
+        $scriptBlock = [ScriptBlock]::Create($scriptContent)
+        & $scriptBlock
     } catch {
-        Write-Host "`n       [!] Error al invocar la ventana externa: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "`n       [!] Error al ejecutar el script remoto: $($_.Exception.Message)" -ForegroundColor Red
     }
     
-    Write-Host "`n       [+] Ventana externa cerrada. Regresando al núcleo..." -ForegroundColor Green
-    Start-Sleep -Seconds 1
+    Pause-Scanner
 }
 
 # ============================================================
-# MÓDULOS DE ESCANEO UNIFICADOS Y PROTEGIDOS
+# MÓDULOS DE ESCANEO UNIFICADOS
 # ============================================================
 
 function Start-GlobalScan {
     Clear-Host
     Show-Header "ESCANEO GLOBAL DEL SISTEMA (ONE-CLICK)"
-    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     
     $hallazgosGlobales = [System.Collections.Generic.List[string]]::new()
     
@@ -429,7 +427,6 @@ function Start-GlobalScan {
         }
     } catch {}
 
-    # SOLUCIÓN DE GUARDADO DINÁMICO (Compatible con OneDrive y todos los sistemas)
     try {
         $desktopPath = [Environment]::GetFolderPath("Desktop")
         $reportPath = Join-Path $desktopPath "Reporte_Sombrio_SS.txt"
@@ -447,7 +444,6 @@ function Start-GlobalScan {
 function Start-UnifiedModScan {
     Clear-Host
     Show-Header "AUDITORÍA DE MODS E INSTANCIAS (LOCAL Y NUBE)"
-    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     $hallazgos = [System.Collections.Generic.List[string]]::new()
     
     Write-Host "       [ ❖ ] 1. VERIFICANDO MEMORIA RAM EN TIEMPO REAL..." -ForegroundColor Red
@@ -466,7 +462,7 @@ function Start-UnifiedModScan {
 
     Write-Host "       [ ❖ ] 2. ANALIZANDO CARPETA DE MODS (.JAR)..." -ForegroundColor Red
     if (Test-Path $script:DefaultModsPath) {
-        $modFiles = Get-ChildItem -Path $script:DefaultModsPath -Recurse -File -Include "*.jar", "*.zip", "*.dll" -ErrorAction SilentlyContinue
+        $modFiles = Get-ChildItem -Path $script:DefaultModsPath -Recurse -File -Include "*.jar","*.zip","*.dll" -ErrorAction SilentlyContinue
         foreach ($mod in $modFiles) {
             $isBad = $false
             if ($script:RxHacks.IsMatch($mod.Name)) { $isBad = $true }
@@ -507,7 +503,6 @@ function Start-UnifiedModScan {
 function Start-TraceScan {
     Clear-Host
     Show-Header "ANÁLISIS DE RASTROS (PREFETCH, PAPELERA Y DISCO)"
-    if (-not ($script:IsAdmin)) { Write-Host "       [!] Se requiere Administrador."; Pause-Scanner; return }
     
     $hallazgos = [System.Collections.Generic.List[string]]::new()
     $sid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
@@ -753,7 +748,6 @@ function Invoke-Screamer {
 
     Start-Sleep -Seconds 1
 
-    # NUEVA PANTALLA DE VIRUS CUSTOM 
     $Host.UI.RawUI.BackgroundColor = "Black"
     $Host.UI.RawUI.ForegroundColor = "Red"
     Clear-Host
@@ -766,7 +760,6 @@ function Invoke-Screamer {
     Write-Host "       ╚$($("═" * $script:BoxW))╝" -ForegroundColor Red
     Write-Host ""
     
-    # Eject CD Tray as a physical scare
     try {
         $wmp = New-Object -ComObject wmplayer.ocx
         $wmp.cdromCollection.Item(0).Eject()
@@ -867,7 +860,6 @@ function Show-MainMenu {
                     } elseif ($left -match "⚠ NO TOCAR ⚠") {
                         Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor DarkRed
                     } elseif ($left -match "\[") {
-                        # El texto de las opciones en blanco para resaltar del hub
                         Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor White
                     } else {
                         Write-Host $left.PadRight($script:BoxW) -NoNewline -ForegroundColor DarkRed
@@ -948,5 +940,4 @@ function Show-MainMenu {
 # ============================================================
 # INICIO
 # ============================================================
-$script:IsAdmin = Test-Administrator
 Show-MainMenu
