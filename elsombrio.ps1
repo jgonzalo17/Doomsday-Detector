@@ -1,13 +1,14 @@
 #Requires -Version 5.1
 chcp 65001 > $null
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "EL SOMBRIO IF - FORENSIC SCANNER V72 [GATO EDITION FINAL]"
+$Host.UI.RawUI.WindowTitle = "EL SOMBRIO IF - FORENSIC SCANNER V74 [EDICION PRO]"
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V72 - FINAL FIXES)
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V74)
 # Mejoras:
-#   - Corrección sintáctica del bloque Switch.
-#   - Implementación de [ Registro de Análisis ] en memoria.
+#   - Memoria de Registro (Opción 09) completamente separada por recuadros.
+#   - Arte ASCII original restaurado.
+#   - Escaneo global optimizado (con barra de porcentaje real).
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods"
@@ -16,16 +17,21 @@ $script:BoxW           = 95
 $script:MaxBoxItems    = 250   
 
 # ------------------------------------------------------------
-# MEMORIA DE SESIÓN (Guarda todo lo analizado)
+# MEMORIA DE SESIÓN INDEPENDIENTE (Para la Opción 09)
 # ------------------------------------------------------------
-$script:MasterLog = [System.Collections.Generic.List[string]]::new()
+$script:LogMods      = [System.Collections.Generic.List[string]]::new()
+$script:LogPrefetch  = [System.Collections.Generic.List[string]]::new()
+$script:LogMemoria   = [System.Collections.Generic.List[string]]::new()
+$script:LogMacros    = [System.Collections.Generic.List[string]]::new()
+$script:LogServicios = [System.Collections.Generic.List[string]]::new()
+$script:LogDisco     = [System.Collections.Generic.List[string]]::new()
 
-function Add-ToMasterLog([array]$Items) {
+function Add-ToLog([System.Collections.Generic.List[string]]$LogList, [array]$Items) {
     if ($null -ne $Items) {
         foreach ($item in $Items) {
             if ($item -notmatch "======" -and $item -notmatch "Sin hallazgos") {
-                if (-not $script:MasterLog.Contains($item)) {
-                    $script:MasterLog.Add($item)
+                if (-not $LogList.Contains($item)) {
+                    $LogList.Add($item)
                 }
             }
         }
@@ -33,25 +39,53 @@ function Add-ToMasterLog([array]$Items) {
 }
 
 # ------------------------------------------------------------
-# ARTE: GATITO REDISEÑADO (CYBER CAT)
+# ARTE ORIGINAL: EL SOMBRIO GIRL
 # ------------------------------------------------------------
-$script:sideCat = @(
-    "                                       /\___/\     ",
-    "                                      (  o o  )    ",
-    "                                      /  =^=  \    ",
-    "                                     /         \   ",
-    "                                    |           |  ",
-    "                                    |  _     _  |  ",
-    "                                    | | |   | | |  ",
-    "                                    | | |   | | |  ",
-    "                                    | | |   | | |  ",
-    "                                    | | |   | | |  ",
-    "                                    \ \_/   \_/ /  ",
-    "                                     \_________/   ",
-    "                                     (  (   )  )   ",
-    "                                     |  |   |  |   ",
-    "                                    _|_ |   | _|_  ",
-    "                                   (____)   (____) "
+$script:sideGirl = @(
+    "                                                     .::---:               ::"
+    "                                                    =-..-::-*=            -+.   -+-"
+    "                                                   -: =.     :+          :=+   ==="
+    "                                                  :+ .*       =:        ===-::.==."
+    "                               -: +                :. ..:. -.=.     .."
+    "                                                    =--=       .....  =:   .=  ==+-   .:++."
+    "                                                     .-==.    =:...::-:    -.   :*-. :==-."
+    "                                                        -=-. .+       :=-     :-: .=:=.+"
+    "                                                          .:=---::::.   -=+:  .  .--.=.  "
+    "                                                       :----:  ::.  :=:   :=-:   -  :=:::."
+    "                                                     :-.:...::- :- ::::=:  -=.: :-.=-----+"
+    "                                                    =. -: :..   . .:    ==  .-.  +-::+."
+    "                                                  --. =.  .   :    =:    *+  -+=:..:=:"
+    "                                            :---::. -:  -   :+:  =  =:    ++  .+ ..---"
+    "                                             .---::...-.  :-:=  .+   =    .==  --. ..++"
+    "                                            ---:.   :. .--..-+  :=    --.   =+.  +.:-:-+"
+    "                                            =..: :=--=+-===..-  -..: = :--:.:=-  .=. *+."
+    "                                            *.* -=  *-*..**=  : =..+.=:.   ..=.   .+ :*-"
+    "                                            .--.+:  =-*.  .    :--@*=+=:.-=  :=    =:+:+"
+    "                                              =:*:-. .+=     .    --.-=:  :-  +    -:=-"
+    "                                              :.  ..=-  =-  :::    :-=-    .+=-    --+"
+    "                                                   =-..  .-::..::--= ...-:-.-.     ==."
+    "                                                  .=: :. -+:::+-..+..+. -==.      :+"
+    "                                                    ::=--=.---+- .-=:=.. ..       :"
+    "                                               .:-::--=: :+:.--*--+=. .:=:::"
+    "                                              =:-:..:.:.  -..-.... :.:  .  --"
+    "                                          .-=-  +=:.=::: .+: .==:=.:-+      =:"
+    "                                          =-:. .+ ..  .  .+-:  .-=.=:-     ..+:"
+    "                                              ::--. .:.    .-:.    .:-.   .      :-"
+    "                                               .--=:.     =-.    .+:          .:"
+    "                                                .-::.    .+:     =.          ."
+    "                                                 .-==:  .=.     =.        .:"
+    "                                                    :=--+     -=      .-:"
+    "                                                      .+:    .+.    .:"
+    "                                                      :=    .=.   .-"
+    "                                                       =.   +."
+    "                                                       -=  -=  .:"
+    "                                                        +. +.  ="
+    "                                                       -=+  .+"
+    "                                                         +:  ="
+    "                                                         :=  +"
+    "                                                          +:-"
+    "                                                          :=."
+    "                                                         .::"
 )
 
 $script:IllegalKeywords = @(
@@ -64,7 +98,7 @@ $script:IllegalKeywords = @(
     "marrowcrystal", "anchoroptimizer", "quickelytra", "clickcrystals",
     "radarbro", "zansmap", "voxelmap", "xaerosmap",
     "aimbot", "killaura", "reach", "fly", "scaffold", "criticals", "jclicker", "ghostclicker",
-    "meteor", "wurst", "aristois", "bleachhack", "mathax", "liquidbounce",
+    "meteor", "wurst", "aristois", "bleachhack", "mathax", "liquidbounce", 
     "raven", "vape", "novoline", "flux", "impact", "inertia", "kami", "krypton"
 )
 
@@ -101,6 +135,40 @@ $script:ScanCount    = 0
 $script:DeepHits     = 0
 
 # ============================================================
+# MOTOR DECOMPRESSOR SEGURO
+# ============================================================
+if (-not ([System.Management.Automation.PSTypeName]'SombrioDecompressor').Type) {
+    try {
+        Add-Type -TypeDefinition @"
+        using System;
+        using System.Runtime.InteropServices;
+        public class SombrioDecompressor {
+            [DllImport("ntdll.dll")]
+            public static extern uint RtlDecompressBufferEx(ushort CompressionFormat, byte[] UncompressedBuffer, int UncompressedBufferSize, byte[] CompressedBuffer, int CompressedBufferSize, out int FinalUncompressedSize, IntPtr WorkSpace);
+            [DllImport("ntdll.dll")]
+            public static extern uint RtlGetCompressionWorkSpaceSize(ushort CompressionFormat, out uint CompressBufferWorkSpaceSize, out uint CompressFragmentWorkSpaceSize);
+            public static byte[] Decompress(byte[] compressed) {
+                if (compressed == null || compressed.Length < 8) return null;
+                if (compressed[0] != 0x4D || compressed[1] != 0x41 || compressed[2] != 0x4D) return null;
+                int uncompSize = BitConverter.ToInt32(compressed, 4);
+                uint wsComp, wsFrag;
+                if (RtlGetCompressionWorkSpaceSize(4, out wsComp, out wsFrag) != 0) return null;
+                IntPtr workspace = Marshal.AllocHGlobal((int)wsFrag);
+                byte[] result = new byte[uncompSize];
+                try {
+                    int finalSize;
+                    byte[] compData = new byte[compressed.Length - 8];
+                    Array.Copy(compressed, 8, compData, 0, compData.Length);
+                    if (RtlDecompressBufferEx(4, result, uncompSize, compData, compData.Length, out finalSize, workspace) != 0) return null;
+                    return result;
+                } finally { Marshal.FreeHGlobal(workspace); }
+            }
+        }
+"@
+    } catch { }
+}
+
+# ============================================================
 # FUNCIONES DE INTERFAZ Y UTILIDADES
 # ============================================================
 function Test-Administrator {
@@ -119,22 +187,24 @@ function Invoke-Typewriter {
 function Show-BootAnimation {
     Clear-Host
     Write-Host "`n"
-    $catColors = @("Cyan","Blue","DarkCyan","DarkBlue","Blue","DarkCyan")
-    for ($i = 0; $i -lt $script:sideCat.Count; $i++) {
-        $c = $catColors[([math]::Floor($i / 4)) % $catColors.Count]
-        Write-Host $script:sideCat[$i].PadLeft(62) -ForegroundColor $c
+    for ($i = 0; $i -lt $script:sideGirl.Count; $i++) {
+        $line = $script:sideGirl[$i]
+        if ($i -ge 12 -and $i -le 24) { Write-Host $line -ForegroundColor DarkBlue } 
+        elseif ($i -gt 24 -and $i -le 48) { Write-Host $line -ForegroundColor Blue } 
+        else { Write-Host $line -ForegroundColor Cyan }
     }
     Write-Host "`n"
 
     $bootSteps = @(
         "Inicializando subsistema de auditoría NT...",
-        "Comprobando integridad de hashes y motores de memoria...",
-        "Despertando al gato forense y sincronizando logs...",
-        "Carga de módulos forenses completada con éxito."
+        "Comprobando integridad de hashes y motores de descompresión...",
+        "Estableciendo enlaces seguros con la memoria RAM...",
+        "Cargando submódulos de análisis forense avanzado...",
+        "Sincronizando registros en memoria..."
     )
 
     for ($i = 0; $i -lt 15; $i++) {
-        $stepIndex = [math]::Min([math]::Floor($i / 4), $bootSteps.Count - 1)
+        $stepIndex = [math]::Min([math]::Floor($i / 3), $bootSteps.Count - 1)
         $stepText  = $bootSteps[$stepIndex].PadRight(55, ' ')
 
         $pct       = [math]::Round((($i + 1) / 15) * 100)
@@ -163,7 +233,7 @@ function Show-Banner {
 "@
     Write-Host $banner -ForegroundColor Blue
     $pad = [math]::Max(0, [math]::Floor(($script:BoxW - 52) / 2))
-    $str = ((' ' * $pad) + "[ ENTERPRISE FORENSIC FRAMEWORK - GATO EDITION ]").PadRight($script:BoxW, ' ')
+    $str = ((' ' * $pad) + "[ ENTERPRISE FORENSIC FRAMEWORK - SECURE RUNTIME ]").PadRight($script:BoxW, ' ')
     Write-Host "       $str`n" -ForegroundColor Cyan
 }
 
@@ -221,6 +291,9 @@ function Show-PhaseProgress {
     Write-Host ""
 }
 
+# ------------------------------------------------------------
+# CONSTRUCTOR DE CUADROS INDIVIDUALES
+# ------------------------------------------------------------
 function Show-CategoryBox {
     param(
         [string]$Title,
@@ -229,6 +302,7 @@ function Show-CategoryBox {
         [string]$TitleColor = "Cyan"
     )
 
+    # Si Force es verdadero, siempre dibuja la caja aunque esté vacía
     if (-not $Force -and ($null -eq $Items -or $Items.Count -eq 0)) { return }
 
     $cW = [math]::Floor(($script:BoxW - 1) / 2)
@@ -246,7 +320,7 @@ function Show-CategoryBox {
     Write-Host "       ╠$("═" * $cW)╬$("═" * $cW)╣" -ForegroundColor $borderColor
 
     if ($null -eq $Items -or $Items.Count -eq 0) {
-        Write-Host ("       ║" + " Sin hallazgos.".PadRight($cW) + "║" + " ---".PadRight($cW) + "║") -ForegroundColor Green
+        Write-Host ("       ║" + " Sin hallazgos registrados.".PadRight($cW) + "║" + " ---".PadRight($cW) + "║") -ForegroundColor Green
     } else {
         $shown = 0
         foreach ($item in $Items) {
@@ -260,6 +334,7 @@ function Show-CategoryBox {
             $rightText = "---"
 
             $sepIdx = $item.IndexOf(" | ")
+            if ($sepIdx -lt 0) { $sepIdx = $item.IndexOf(" | Estado: ") }
             if ($sepIdx -ge 0) {
                 $leftText  = $item.Substring(0, $sepIdx).Trim()
                 $rightText = $item.Substring($sepIdx + 3).Trim()
@@ -282,19 +357,8 @@ function Show-CategoryBox {
     Write-Host ""
 }
 
-function Show-GlobalDashboard {
-    param([System.Collections.Specialized.OrderedDictionary]$Categories)
-    Clear-Host
-    Show-Header "RESULTADOS - PANEL DE ANÁLISIS"
-    foreach ($key in $Categories.Keys) {
-        $entry = $Categories[$key]
-        Show-CategoryBox -Title $key -Items $entry.Items -Force:($entry.Force) -TitleColor $entry.Color
-    }
-    Pause-Scanner
-}
-
 # ============================================================
-# MONITOR DE ESCANEO EN VIVO (BARRA OPTIMIZADA)
+# MONITOR DE ESCANEO EN VIVO
 # ============================================================
 function Update-ScanMonitor {
     param(
@@ -401,7 +465,7 @@ function Start-GlobalScan {
             $memoria.Add("[PROCESO MACRO MALICIOSO] $($proc.Name).exe | Ruta: Memoria (PID: $($proc.Id))")
             $maliciosos.Add("[EN MEMORIA] $($proc.Name).exe | PID: $($proc.Id)")
         }
-        Add-ToMasterLog $memoria
+        Add-ToLog $script:LogMemoria $memoria
     } catch {}
 
     try {
@@ -417,7 +481,7 @@ function Start-GlobalScan {
                 $prefetchHoy.Add("[PREFETCH] $($item.Name) | Hora: $($item.LastWriteTime)")
             }
         }
-        Add-ToMasterLog $prefetchHoy
+        Add-ToLog $script:LogPrefetch $prefetchHoy
     } catch {}
 
     try {
@@ -448,7 +512,7 @@ function Start-GlobalScan {
                 }
             }
         }
-        Add-ToMasterLog $mods
+        Add-ToLog $script:LogMods $mods
     } catch {}
 
     try {
@@ -462,7 +526,7 @@ function Start-GlobalScan {
                 $maliciosos.Add("[SOFTWARE MACRO] $($kp.Name) | Ruta: $($kp.Path)")
             }
         }
-        Add-ToMasterLog $macros
+        Add-ToLog $script:LogMacros $macros
     } catch {}
 
     try {
@@ -475,7 +539,7 @@ function Start-GlobalScan {
                 $servicios.Add("[SERVICIO OK] $service | Estado: RUNNING")
             }
         }
-        Add-ToMasterLog $servicios
+        Add-ToLog $script:LogServicios $servicios
     } catch {}
 
     try {
@@ -532,8 +596,7 @@ function Start-GlobalScan {
         Update-ScanMonitor -Scanned $script:ScanCount -Hits $script:DeepHits -CurrentFile "COMPLETADO" -DriveLabel "OK" -StartTime $scanStart -Percent 100
         $elapsed = (Get-Date) - $scanStart
         Close-ScanMonitor -Message ("  [+] Disco revisado: {0:N0} archivos | {1} maliciosos | Tiempo: {2:hh\:mm\:ss}" -f $script:ScanCount, $script:DeepHits, $elapsed)
-        Add-ToMasterLog $disco
-        Add-ToMasterLog $maliciosos
+        Add-ToLog $script:LogDisco $disco
     } catch {}
 
     $statsBox.Add("====== ELEMENTOS PROCESADOS ======")
@@ -548,37 +611,23 @@ function Start-GlobalScan {
 
     try {
         Write-Host "       [*] Generando reporte forense estructurado..." -ForegroundColor White
-        $reportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "Reporte_Sombrio_V72.txt"
-
-        $header = @(
-            "==============================================================="
-            " REPORTE FORENSE - EL SOMBRIO IF V72 (FINAL FIXES)"
-            " Fecha: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-            " Equipo: $env:COMPUTERNAME | Usuario: $env:USERNAME"
-            " Archivos revisados en disco completo: $script:ScanCount"
-            " Hallazgos maliciosos en disco: $script:DeepHits"
-            "==============================================================="
-        ) + "" + " [RESUMEN]" + $statsBox + "" + " [1] MEMORIA" + $memoria + "" + " [2] PREFETCH" + $prefetchHoy + "" +
-           " [3] MALICIOSOS" + $maliciosos + "" + " [4] MODS" + $mods + "" +
-           " [5] MACROS" + $macros + "" + " [6] SERVICIOS" + $servicios + "" +
-           " [7] DISCO" + $disco
-
+        $reportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "Reporte_Sombrio_V74.txt"
+        $header = @("===============================================================", " REPORTE FORENSE - EL SOMBRIO IF V74")
         $header | Out-File -FilePath $reportPath -Encoding UTF8 -Force
     } catch {}
 
     Start-Sleep -Seconds 1
-
-    $dash = [ordered]@{}
-    $dash["ESTADÍSTICAS GLOBALES DEL ANÁLISIS"] = @{ Items = $statsBox;    Force = $true;  Color = "Yellow" }
-    $dash["CUADRO 1 - MEMORIA / PROCESOS"]      = @{ Items = $memoria;     Force = $true;  Color = "Cyan" }
-    $dash["CUADRO 2 - PREFETCH DE HOY (TODO)"]  = @{ Items = $prefetchHoy; Force = $true;  Color = "White" }
-    $dash["CUADRO 3 - MALICIOSOS (ROJO)"]       = @{ Items = $maliciosos;  Force = $true;  Color = "Red" }
-    $dash["CUADRO 4 - MODS (.MINECRAFT)"]       = @{ Items = $mods;        Force = $false; Color = "Cyan" }
-    $dash["CUADRO 5 - MACROS / AUTOCLICKERS"]   = @{ Items = $macros;      Force = $false; Color = "Cyan" }
-    $dash["CUADRO 6 - SISTEMA (SERVICIOS)"]     = @{ Items = $servicios;   Force = $true;  Color = "Cyan" }
-    $dash["CUADRO 7 - DISCO PROFUNDO"]          = @{ Items = $disco;       Force = $false; Color = "Cyan" }
-
-    Show-GlobalDashboard -Categories $dash
+    Clear-Host
+    Show-Header "RESULTADOS GLOBALES - PANEL DE ANÁLISIS"
+    Show-CategoryBox -Title "ESTADÍSTICAS GLOBALES DEL ANÁLISIS" -Items $statsBox -Force -TitleColor "Yellow"
+    Show-CategoryBox -Title "CUADRO 1: MEMORIA / PROCESOS" -Items $memoria -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "CUADRO 2: PREFETCH DE HOY (TODO)" -Items $prefetchHoy -Force -TitleColor "White"
+    Show-CategoryBox -Title "CUADRO 3: MALICIOSOS (ROJO)" -Items $maliciosos -Force -TitleColor "Red"
+    Show-CategoryBox -Title "CUADRO 4: MODS (.MINECRAFT)" -Items $mods -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "CUADRO 5: MACROS / AUTOCLICKERS" -Items $macros -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "CUADRO 6: SISTEMA (SERVICIOS)" -Items $servicios -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "CUADRO 7: DISCO PROFUNDO" -Items $disco -Force -TitleColor "Cyan"
+    Pause-Scanner
 }
 
 # ============================================================
@@ -597,10 +646,10 @@ function Start-UnifiedModScan {
             }
         }
     }
-    Add-ToMasterLog $mods
+    Add-ToLog $script:LogMods $mods
     Clear-Host
     Show-Header "RESULTADOS - MODS"
-    Show-CategoryBox -Title "MODS (.MINECRAFT)" -Items $mods -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "CUADRO EXCLUSIVO: MODS (.MINECRAFT)" -Items $mods -Force -TitleColor "Cyan"
     Pause-Scanner
 }
 
@@ -608,7 +657,6 @@ function Start-TraceScan {
     Clear-Host
     Show-Header "ANÁLISIS DE PREFETCH"
     $todo  = [System.Collections.Generic.List[string]]::new()
-    $malo  = [System.Collections.Generic.List[string]]::new()
 
     $hoy = (Get-Date).Date
     $pfFiles = Get-ChildItem -Path "C:\Windows\Prefetch" -Filter "*.pf" -ErrorAction SilentlyContinue |
@@ -617,16 +665,14 @@ function Start-TraceScan {
     foreach ($item in $pfFiles) {
         if ($script:RxHacks.IsMatch($item.Name)) {
             $todo.Add("[PREFETCH MALICIOSO] $($item.Name) | Hora: $($item.LastWriteTime)")
-            $malo.Add("[PREFETCH HACK] $($item.Name) | Hora: $($item.LastWriteTime)")
         } else {
             $todo.Add("[PREFETCH NORMAL] $($item.Name) | Hora: $($item.LastWriteTime)")
         }
     }
-    Add-ToMasterLog $todo
+    Add-ToLog $script:LogPrefetch $todo
     Clear-Host
     Show-Header "RESULTADOS - PREFETCH DE HOY"
-    Show-CategoryBox -Title "PREFETCH DE HOY - TODO" -Items $todo -Force -TitleColor "White"
-    Show-CategoryBox -Title "PREFETCH MALICIOSOS" -Items $malo -Force -TitleColor "Red"
+    Show-CategoryBox -Title "CUADRO EXCLUSIVO: PREFETCH DE HOY" -Items $todo -Force -TitleColor "White"
     Pause-Scanner
 }
 
@@ -637,10 +683,10 @@ function Start-MacroAutoclickScan {
     foreach ($proc in (Get-Process -ErrorAction SilentlyContinue | Where-Object { $script:RxMacroCritical.IsMatch($_.Name) })) {
         $macros.Add("[PROCESO MALICIOSO] $($proc.Name).exe | PID: $($proc.Id)")
     }
-    Add-ToMasterLog $macros
+    Add-ToLog $script:LogMacros $macros
     Clear-Host
     Show-Header "RESULTADOS - MACROS"
-    Show-CategoryBox -Title "MACROS EN MEMORIA" -Items $macros -Force -TitleColor "Red"
+    Show-CategoryBox -Title "CUADRO EXCLUSIVO: MACROS EN MEMORIA" -Items $macros -Force -TitleColor "Red"
     Pause-Scanner
 }
 
@@ -654,10 +700,10 @@ function Start-ServicesAudit {
             $servicios.Add("$($srv.Name) ($($srv.DisplayName)) | Estado: $($srv.Status)")
         }
     }
-    Add-ToMasterLog $servicios
+    Add-ToLog $script:LogServicios $servicios
     Clear-Host
     Show-Header "RESULTADOS - SERVICIOS"
-    Show-CategoryBox -Title "SISTEMA WINDOWS" -Items $servicios -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "CUADRO EXCLUSIVO: SISTEMA WINDOWS" -Items $servicios -Force -TitleColor "Cyan"
     Pause-Scanner
 }
 
@@ -680,14 +726,23 @@ function Start-Hubs {
     Pause-Scanner
 }
 
+# ------------------------------------------------------------
+# OPCIÓN 09: REGISTRO DE ANÁLISIS EN MÚLTIPLES CUADROS
+# ------------------------------------------------------------
 function Start-ShowRegistry {
     Clear-Host
-    Show-Header "REGISTRO DE ANÁLISIS ACUMULADO"
-    if ($script:MasterLog.Count -eq 0) {
-        Write-Host "`n       [!] La memoria de análisis está vacía. Ejecute un escaneo primero." -ForegroundColor Yellow
-    } else {
-        Show-CategoryBox -Title "HISTORIAL DE HALLAZGOS (SESIÓN ACTUAL)" -Items $script:MasterLog -Force -TitleColor "White"
-    }
+    Show-Header "REGISTRO DE ANÁLISIS (MEMORIA ACUMULADA DE SESIÓN)"
+    Write-Host "       [*] Mostrando cuadros independientes por cada categoría analizada:" -ForegroundColor DarkGray
+    Write-Host ""
+    
+    # Force=$true obliga a dibujar el cuadro, incluso si dice "Sin hallazgos".
+    Show-CategoryBox -Title "REGISTRO: MODS (.MINECRAFT)" -Items $script:LogMods -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "REGISTRO: PREFETCH" -Items $script:LogPrefetch -Force -TitleColor "White"
+    Show-CategoryBox -Title "REGISTRO: MEMORIA Y PROCESOS" -Items $script:LogMemoria -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "REGISTRO: MACROS Y AUTOCLICKERS" -Items $script:LogMacros -Force -TitleColor "Red"
+    Show-CategoryBox -Title "REGISTRO: SERVICIOS WINDOWS" -Items $script:LogServicios -Force -TitleColor "Cyan"
+    Show-CategoryBox -Title "REGISTRO: DISCO PROFUNDO" -Items $script:LogDisco -Force -TitleColor "Cyan"
+    
     Pause-Scanner
 }
 
@@ -722,9 +777,8 @@ function Show-MainMenu {
             "       ╚═══════════════════════════════════════════════════════════════════════════════════════╝"
         )
 
-        $gap        = "  "
-        $catTopPad  = [math]::Max(0, [math]::Floor(($menuLines.Count - $script:sideCat.Count) / 2))
-        $totalLines = [math]::Max($menuLines.Count, $catTopPad + $script:sideCat.Count)
+        $gap = " "
+        $totalLines = [math]::Max($menuLines.Count, $script:sideGirl.Count)
 
         for ($i = 0; $i -lt $totalLines; $i++) {
             if ($i -lt $menuLines.Count) {
@@ -745,18 +799,16 @@ function Show-MainMenu {
 
             Write-Host $gap -NoNewline
 
-            $catIdx = $i - $catTopPad
-            if ($catIdx -ge 0 -and $catIdx -lt $script:sideCat.Count) {
-                $catLine = $script:sideCat[$catIdx].TrimEnd()
-                if ($catLine -match "o o") { Write-Host $catLine -ForegroundColor White }
-                elseif ($catLine -match "\=\^\=") { Write-Host $catLine -ForegroundColor Yellow }
-                elseif ($catLine -match "___|_______|____") { Write-Host $catLine -ForegroundColor DarkBlue }
-                else { Write-Host $catLine -ForegroundColor Cyan }
+            if ($i -lt $script:sideGirl.Count) {
+                $girlLine = $script:sideGirl[$i].TrimEnd()
+                if ($i -ge 12 -and $i -le 24) { Write-Host $girlLine -ForegroundColor DarkBlue } 
+                elseif ($i -gt 24 -and $i -le 48) { Write-Host $girlLine -ForegroundColor Blue } 
+                else { Write-Host $girlLine -ForegroundColor Cyan }
             } else { Write-Host "" }
         }
         Write-Host ""
 
-        $option = [string](Read-Host "       [ROOT@SOMBRIO-GATO]# Seleccione un módulo operativo [00-10]")
+        $option = [string](Read-Host "       [ROOT@SOMBRIO-PRO]# Seleccione un módulo operativo [00-10]")
 
         switch ($option.Trim()) {
             "0"  { exit }
@@ -779,7 +831,7 @@ function Show-MainMenu {
             "08" { Start-Hubs }
             "9"  { Start-ShowRegistry }
             "09" { Start-ShowRegistry }
-            "10" { return }
+            "10" { exit }
             default {
                 if ($option.Trim() -ne "") {
                     Write-Host "`n       [!] Comando no reconocido en el sistema." -ForegroundColor Red
