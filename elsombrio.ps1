@@ -1,11 +1,11 @@
 #Requires -Version 5.1
-chcp 65001 > $null
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$Host.UI.RawUI.WindowTitle = "EL SOMBRIO IF - FORENSIC SCANNER V74 [EDICION PRO]"
+chcp 65001 > $null;
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
+$Host.UI.RawUI.WindowTitle = "EL SOMBRIO IF - FORENSIC SCANNER V75 [EDICION PRO]";
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V74)
-# Mejoras: Sintaxis blindada contra errores de parseo en GitHub
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V75 - ANTI-CRASH)
+# Mejoras: Sintaxis 100% blindada para evitar errores en irm | iex
 # ============================================================
 
 $script:DefaultModsPath = "$env:APPDATA\.minecraft\mods";
@@ -131,32 +131,8 @@ $script:DeepHits     = 0;
 # ============================================================
 if (-not ([System.Management.Automation.PSTypeName]'SombrioDecompressor').Type) {
     try {
-        Add-Type -TypeDefinition @"
-        using System;
-        using System.Runtime.InteropServices;
-        public class SombrioDecompressor {
-            [DllImport("ntdll.dll")]
-            public static extern uint RtlDecompressBufferEx(ushort CompressionFormat, byte[] UncompressedBuffer, int UncompressedBufferSize, byte[] CompressedBuffer, int CompressedBufferSize, out int FinalUncompressedSize, IntPtr WorkSpace);
-            [DllImport("ntdll.dll")]
-            public static extern uint RtlGetCompressionWorkSpaceSize(ushort CompressionFormat, out uint CompressBufferWorkSpaceSize, out uint CompressFragmentWorkSpaceSize);
-            public static byte[] Decompress(byte[] compressed) {
-                if (compressed == null || compressed.Length < 8) return null;
-                if (compressed[0] != 0x4D || compressed[1] != 0x41 || compressed[2] != 0x4D) return null;
-                int uncompSize = BitConverter.ToInt32(compressed, 4);
-                uint wsComp, wsFrag;
-                if (RtlGetCompressionWorkSpaceSize(4, out wsComp, out wsFrag) != 0) return null;
-                IntPtr workspace = Marshal.AllocHGlobal((int)wsFrag);
-                byte[] result = new byte[uncompSize];
-                try {
-                    int finalSize;
-                    byte[] compData = new byte[compressed.Length - 8];
-                    Array.Copy(compressed, 8, compData, 0, compData.Length);
-                    if (RtlDecompressBufferEx(4, result, uncompSize, compData, compData.Length, out finalSize, workspace) != 0) return null;
-                    return result;
-                } finally { Marshal.FreeHGlobal(workspace); }
-            }
-        }
-"@
+        $source = "using System;`nusing System.Runtime.InteropServices;`npublic class SombrioDecompressor {`n[DllImport(`"ntdll.dll`")]`npublic static extern uint RtlDecompressBufferEx(ushort CompressionFormat, byte[] UncompressedBuffer, int UncompressedBufferSize, byte[] CompressedBuffer, int CompressedBufferSize, out int FinalUncompressedSize, IntPtr WorkSpace);`n[DllImport(`"ntdll.dll`")]`npublic static extern uint RtlGetCompressionWorkSpaceSize(ushort CompressionFormat, out uint CompressBufferWorkSpaceSize, out uint CompressFragmentWorkSpaceSize);`npublic static byte[] Decompress(byte[] compressed) {`nif (compressed == null || compressed.Length < 8) return null;`nif (compressed[0] != 0x4D || compressed[1] != 0x41 || compressed[2] != 0x4D) return null;`nint uncompSize = BitConverter.ToInt32(compressed, 4);`nuint wsComp, wsFrag;`nif (RtlGetCompressionWorkSpaceSize(4, out wsComp, out wsFrag) != 0) return null;`nIntPtr workspace = Marshal.AllocHGlobal((int)wsFrag);`nbyte[] result = new byte[uncompSize];`ntry {`nint finalSize;`nbyte[] compData = new byte[compressed.Length - 8];`nArray.Copy(compressed, 8, compData, 0, compData.Length);`nif (RtlDecompressBufferEx(4, result, uncompSize, compData, compData.Length, out finalSize, workspace) != 0) return null;`nreturn result;`n} finally { Marshal.FreeHGlobal(workspace); }`n}`n}";
+        Add-Type -TypeDefinition $source;
     } catch { }
 }
 
@@ -169,8 +145,8 @@ function Test-Administrator {
 
 function Invoke-Typewriter {
     param([string]$Text, [int]$Speed = 10, [string]$Color = "Cyan")
-    foreach ($char in$Text.ToCharArray()) {
-        Write-Host $char -NoNewline -ForegroundColor$Color;
+    foreach ($char in $Text.ToCharArray()) {
+        Write-Host $char -NoNewline -ForegroundColor $Color;
         Start-Sleep -Milliseconds $Speed;
     }
     Write-Host "";
@@ -179,30 +155,32 @@ function Invoke-Typewriter {
 function Show-BootAnimation {
     Clear-Host;
     Write-Host "`n";
-    for ($i = 0; $i -lt $script:sideGirl.Count; $i++) {
-        $line = $script:sideGirl[$i];
-        if ($i -ge 12 -and $i -le 24) { Write-Host $line -ForegroundColor DarkBlue } 
-        elseif ($i -gt 24 -and $i -le 48) { Write-Host $line -ForegroundColor Blue } 
-        else { Write-Host $line -ForegroundColor Cyan }
+    for ($i = 0; $i -lt$script:sideGirl.Count; $i++) {$line = $script:sideGirl[$i];
+        if ($i -ge 12 -and $i -le 24) { Write-Host$line -ForegroundColor DarkBlue; } 
+        elseif ($i -gt 24 -and $i -le 48) { Write-Host$line -ForegroundColor Blue; } 
+        else { Write-Host $line -ForegroundColor Cyan; }
     }
     Write-Host "`n";
 
     $bootSteps = @(
         "Inicializando subsistema de auditoría NT...",
-        "Comprobando integridad de hashes y motores de descompresión...",
+        "Comprobando integridad de hashes y motores...",
         "Estableciendo enlaces seguros con la memoria RAM...",
         "Cargando submódulos de análisis forense avanzado...",
         "Sincronizando registros en memoria..."
     );
 
     for ($i = 0; $i -lt 15; $i++) {
-        $stepIndex = [math]::Min([math]::Floor($i / 3), $bootSteps.Count - 1);$stepText  = $bootSteps[$stepIndex].PadRight(55, ' ');
+        $stepIndex = [math]::Min([math]::Floor($i / 3), $bootSteps.Count - 1);
+        $stepText  = $bootSteps[$stepIndex].PadRight(55, ' ');
 
-        $pct       = [math]::Round((($i + 1) / 15) * 100);$barLength = 35;
-        $filled    = [math]::Round(($pct / 100) * $barLength);$empty     = $barLength -$filled;
+        $pct       = [math]::Round((($i + 1) / 15) * 100);
+        $barLength = 35;
+        $filled    = [math]::Round(($pct / 100) * $barLength);
+        $empty     = $barLength - $filled;
         $progressBar = "█" * $filled + "▒" * $empty;
 
-        Write-Host "`r       [CORE] $stepText | [$progressBar] $pct% " -NoNewline -ForegroundColor Cyan;
+        Write-Host "`r       [CORE] $stepText | [$progressBar]$pct% " -NoNewline -ForegroundColor Cyan;
         Start-Sleep -Milliseconds 60;
     }
     Write-Host "`n`n       [OK] SISTEMA LISTO PARA OPERAR." -ForegroundColor Green;
@@ -212,14 +190,14 @@ function Show-BootAnimation {
 function Show-Banner {
     Clear-Host;
     Write-Host "`n`n";
-    $banner = @"
-              ███████╗ ██████╗ ███╗   ███╗██████╗ ██████╗ ██╗ ██████╗
-              ██╔════╝██╔═══██╗████╗ ████║██╔══██╗██╔══██╗██║██╔═══██╗
-              ███████╗██║   ██║██╔████╔██║██████╔╝██████╔╝██║██║   ██║
-              ╚════██║██║   ██║██║╚██╔╝██║██╔══██╗██╔══██╗██║██║   ██║
-              ███████║╚██████╔╝██║ ╚═╝ ██║██████╔╝██║  ██║██║╚██████╔╝
-              ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚═╝ ╚═════╝
-"@;
+    $banner = @(
+        "              ███████╗ ██████╗ ███╗   ███╗██████╗ ██████╗ ██╗ ██████╗",
+        "              ██╔════╝██╔═══██╗████╗ ████║██╔══██╗██╔══██╗██║██╔═══██╗",
+        "              ███████╗██║   ██║██╔████╔██║██████╔╝██████╔╝██║██║   ██║",
+        "              ╚════██║██║   ██║██║╚██╔╝██║██╔══██╗██╔══██╗██║██║   ██║",
+        "              ███████║╚██████╔╝██║ ╚═╝ ██║██████╔╝██║  ██║██║╚██████╔╝",
+        "              ╚══════╝ ╚═════╝ ╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚═╝ ╚═════╝"
+    ) -join "`n";
     Write-Host $banner -ForegroundColor Blue;
     $pad = [math]::Max(0, [math]::Floor(($script:BoxW - 52) / 2));
     $str = ((' ' * $pad) + "[ ENTERPRISE FORENSIC FRAMEWORK - SECURE RUNTIME ]").PadRight($script:BoxW, ' ');
@@ -599,8 +577,8 @@ function Start-GlobalScan {
 
     try {
         Write-Host "       [*] Generando reporte forense estructurado..." -ForegroundColor White;
-        $reportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "Reporte_Sombrio_V74.txt";
-        $header = @("===============================================================", " REPORTE FORENSE - EL SOMBRIO IF V74");
+        $reportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "Reporte_Sombrio_V75.txt";
+        $header = @("===============================================================", " REPORTE FORENSE - EL SOMBRIO IF V75");
         $header \vert{} Out-File -FilePath$reportPath -Encoding UTF8 -Force;
     } catch {}
 
@@ -847,4 +825,4 @@ function Show-MainMenu {
     }
 }
 
-Show-MainMenu
+Show-MainMenu;
