@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+\xEF\xBB\xBF#Requires -Version 5.1
 
 # ============================================================
 # EL SOMBRIO IF - FORENSIC SCANNER (MASTER V74) - EDICIÓN APP (GUI)
@@ -10,8 +10,14 @@
 # ============================================================
 
 $script:AutoElevate     = $true   # $true = pedir permisos de Administrador (UAC) al abrir
-$script:JournalTraceUrl = ""      # Pon aquí el enlace de JournalTrace si quieres que el botón lo abra
-$script:IsChild         = ($args -contains "--sombrio-child")
+$script:DoomsdayRepo     = "https://github.com/jgonzalo17/Doomsday-Detector.git"
+$script:DoomsdayScript   = ""   # (opcional) nombre exacto del .ps1 dentro del repo; vacío = detectar solo
+$script:SystemInformerUrl = "https://sourceforge.net/projects/systeminformer/files/latest/download"
+$script:JournalTraceUrl   = "https://github.com/ponei/JournalTrace/releases/download/1.0/JournalTrace.exe"
+# URL raw de ESTE script en tu GitHub (para poder abrirlo con un solo comando y pedir UAC).
+# Cambia el nombre del archivo si lo subes con otro nombre.
+$script:SelfUrl         = "https://raw.githubusercontent.com/jgonzalo17/Doomsday-Detector/main/Sombrio_V74_GUI.ps1"
+$script:IsChild         = (($args -contains "--sombrio-child") -or [bool]$global:SombrioChild)
 
 # ------------------------------------------------------------
 # RELANZAR OCULTO: abre la app sin ventana de consola (y con UAC si se desea)
@@ -37,27 +43,44 @@ if (-not $script:IsChild -and $PSCommandPath -and $Host.Name -eq 'ConsoleHost') 
     if ($launched) { exit }
 }
 
+# ------------------------------------------------------------
+# EJECUTADO CON "irm ... | iex": pedir UAC y abrir la app oculta en un proceso elevado
+# ------------------------------------------------------------
+if (-not $script:IsChild -and -not $PSCommandPath -and $script:AutoElevate -and $script:SelfUrl -and $Host.Name -eq 'ConsoleHost') {
+    $isAdmIex = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $isAdmIex) {
+        try {
+            $cmdIex = "`$global:SombrioChild = `$true; iex ((irm '$($script:SelfUrl)') -replace '^\uFEFF')"
+            $encIex = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($cmdIex))
+            Start-Process -FilePath "powershell.exe" -Verb RunAs -WindowStyle Hidden -ErrorAction Stop `
+                -ArgumentList "-NoLogo -NoProfile -ExecutionPolicy Bypass -STA -EncodedCommand $encIex"
+            return   # la app ya se abrió en el proceso elevado
+        } catch { }  # UAC cancelado: se abre igual, sin privilegios
+    }
+}
+
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-if (-not ([System.Management.Automation.PSTypeName]'Sombrio.Win').Type) {
+if (-not ([System.Management.Automation.PSTypeName]'Sombrio.WinApi').Type) {
     try {
-        Add-Type -Namespace Sombrio -Name Win -MemberDefinition @'
+        Add-Type -Namespace Sombrio -Name WinApi -MemberDefinition @'
 [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
 [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
 [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
 '@
     } catch { }
 }
-try { [void][Sombrio.Win]::SetProcessDPIAware() } catch { }
+try { [void][Sombrio.WinApi]::SetProcessDPIAware() } catch { }
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-# Si no se pudo relanzar (por ejemplo, ejecutado con irm | iex), se oculta la consola actual.
+# Si se ejecuta en esta misma consola (irm | iex siendo administrador), se oculta mientras la app está abierta.
 $script:HiddenConsole = [IntPtr]::Zero
 if (-not $script:IsChild) {
     try {
-        $hwnd = [Sombrio.Win]::GetConsoleWindow()
-        if ($hwnd -ne [IntPtr]::Zero) { [void][Sombrio.Win]::ShowWindow($hwnd, 0); $script:HiddenConsole = $hwnd }
+        $hwnd = [Sombrio.WinApi]::GetConsoleWindow()
+        if ($hwnd -ne [IntPtr]::Zero -and [Sombrio.WinApi]::IsWindowVisible($hwnd)) { [void][Sombrio.WinApi]::ShowWindow($hwnd, 0); $script:HiddenConsole = $hwnd }
     } catch { }
 }
 
@@ -272,7 +295,7 @@ function Test-Administrator {
 
 function Get-ItemColor {
     param([string]$Text)
-    if ($Text -match 'TE VAS BAN|ILEGAL|MALICIOSO|AUTOCLICK|AUTOCICK|HACK\b|PELIGRO|CRITICO') { return "Red" }
+    if ($Text -match 'ILEGAL|MALICIOSO|AUTOCLICK|AUTOCICK|HACK\b|PELIGRO|CRITICO') { return "Red" }
     if ($script:RxJavaNames.IsMatch($Text) -or $Text -match '\[JAVA\]') { return "Green" }
     if ($Text -match 'APROBADO|NORMAL|RUNNING|OK|\[MOD') { return "Green" }
     if ($Text -match '======') { return "DarkCyan" }
@@ -499,7 +522,9 @@ function Save-Report {
 # MÓDULOS DE ESCANEO
 # ============================================================
 function Invoke-DiskScan {
-    param($Disco, $Maliciosos, [datetime]$StartTime, [int]$BasePct, [int]$SpanPct)
+    param($Disco, $Maliciosos, $Mods = $null, [datetime]$StartTime, [int]$BasePct, [int]$SpanPct)
+
+    $script:DiskModCount = 0
 
     $targetExt = [System.Collections.Generic.HashSet[string]]::new(
         [string[]]@('.jar','.zip','.exe','.dll','.ahk','.au3','.msi','.bat','.cmd','.ps1','.vbs','.scr','.hta','.com'),
@@ -564,10 +589,22 @@ function Invoke-DiskScan {
                 if (-not $targetExt.Contains($f.Extension)) { continue }
                 $full = $f.FullName
                 if ($script:RxPathWhitelist.IsMatch($full)) { continue }
-                if ($script:RxHacks.IsMatch($f.Name) -or $script:RxMacroCritical.IsMatch($f.Name)) {
+                # .jar de cualquier carpeta del disco = posible mod (la carpeta .minecraft\mods se audita aparte)
+                $isJar = ($null -ne $Mods -and $f.Extension -eq '.jar' -and -not $full.StartsWith($script:DefaultModsPath, [StringComparison]::OrdinalIgnoreCase))
+                if ($isJar) { $script:DiskModCount++ }
+                $hit  = ($script:RxHacks.IsMatch($f.Name) -or $script:RxMacroCritical.IsMatch($f.Name))
+                $tiny = ($isJar -and $f.Length -lt 15KB -and $full -match 'mods|minecraft')
+                if ($hit -or $tiny) {
                     $script:DeepHits++
-                    $Disco.Add("[ARCHIVO ILEGAL - TE VAS BAN] $($f.Name) | Ruta: $full")
-                    $Maliciosos.Add("[EN DISCO] $($f.Name) | Ruta: $full")
+                    if ($hit) { $Disco.Add("[ARCHIVO ILEGAL] $($f.Name) | Ruta: $full") }
+                    if ($isJar) {
+                        $Mods.Add("[MOD ILEGAL] $($f.Name) | Ruta: $full")
+                        $Maliciosos.Add("[MOD ILEGAL] $($f.Name) | Ruta: $full")
+                    } else {
+                        $Maliciosos.Add("[EN DISCO] $($f.Name) | Ruta: $full")
+                    }
+                } elseif ($isJar) {
+                    $Mods.Add("[MOD APROBADO] $($f.Name) | Ruta: $full")
                 }
             }
         }
@@ -638,7 +675,7 @@ function Start-GlobalScan {
                     $cPap = $papelera.Items().Count
                     foreach ($item in $papelera.Items()) {
                         if ($script:RxHacks.IsMatch($item.Name)) {
-                            $maliciosos.Add("[PAPELERA HACK - TE VAS BAN] $($item.Name) | Ruta: $($item.Path)")
+                            $maliciosos.Add("[PAPELERA HACK] $($item.Name) | Ruta: $($item.Path)")
                         }
                     }
                 }
@@ -648,20 +685,19 @@ function Start-GlobalScan {
         # 4 - Mods
         if (-not $script:CancelRequested) {
             try {
-                Set-Phase 4 7 "4/7  Auditando .minecraft/mods..."
+                Set-Phase 4 7 "4/7  Auditando .minecraft/mods (el resto de mods del disco se detecta en el paso 7)..."
                 if (Test-Path $script:DefaultModsPath) {
                     $localMods = @(Get-ChildItem -Path $script:DefaultModsPath -Recurse -File -Include "*.jar","*.zip","*.dll" -ErrorAction SilentlyContinue)
                     $cMods = $localMods.Count
                     foreach ($mod in $localMods) {
                         if ($script:RxHacks.IsMatch($mod.Name) -or $mod.Length -lt 15KB) {
-                            $mods.Add("[MOD ILEGAL - TE VAS BAN] $($mod.Name) | Ruta: $($mod.FullName)")
+                            $mods.Add("[MOD ILEGAL] $($mod.Name) | Ruta: $($mod.FullName)")
                             $maliciosos.Add("[MOD ILEGAL] $($mod.Name) | Ruta: $($mod.FullName)")
                         } else {
-                            $mods.Add("[MOD APROBADO] $($mod.Name) | Ruta: OK")
+                            $mods.Add("[MOD APROBADO] $($mod.Name) | Ruta: $($mod.FullName)")
                         }
                     }
                 }
-                Add-ToLog $script:LogMods $mods
             } catch { }
         }
 
@@ -702,16 +738,23 @@ function Start-GlobalScan {
         if (-not $script:CancelRequested) {
             try {
                 Set-Phase 7 7 "7/7  Escaneo profundo de discos (omitiendo Windows)..."
-                Invoke-DiskScan -Disco $disco -Maliciosos $maliciosos -StartTime $scanStart -BasePct 86 -SpanPct 14
+                Invoke-DiskScan -Disco $disco -Maliciosos $maliciosos -Mods $mods -StartTime $scanStart -BasePct 86 -SpanPct 14
                 Add-ToLog $script:LogDisco $disco
             } catch { }
         }
+
+        # Mods: primero los ilegales, y se guardan en el registro de sesión
+        $modsSorted = @($mods | Sort-Object { if ($_ -match 'ILEGAL') { 0 } else { 1 } })
+        $mods = [System.Collections.Generic.List[string]]::new()
+        foreach ($m in $modsSorted) { $mods.Add($m) }
+        Add-ToLog $script:LogMods $mods
+        $cMods += $script:DiskModCount
 
         $statsBox.Add("====== ELEMENTOS PROCESADOS ======")
         $statsBox.Add("Procesos activos en Memoria RAM | Total: $cRam")
         $statsBox.Add("Archivos en Prefetch evaluados | Total: $cPref")
         $statsBox.Add("Archivos en Papelera de Reciclaje | Total: $cPap")
-        $statsBox.Add("Mods locales analizados (.minecraft) | Total: $cMods")
+        $statsBox.Add("Mods analizados (.minecraft + todo el disco) | Total: $cMods")
         $statsBox.Add("Servicios críticos de Windows | Total: $cSvc")
         $statsBox.Add("Archivos de disco escaneados | Total: $script:ScanCount")
         $statsBox.Add("====== RESULTADO DE AMENAZAS ======")
@@ -724,7 +767,7 @@ function Start-GlobalScan {
                 "MEMORIA / PROCESOS"     = $memoria
                 "PREFETCH DE HOY"        = $prefetchHoy
                 "MALICIOSOS"             = $maliciosos
-                "MODS (.MINECRAFT)"      = $mods
+                "MODS (TODO EL DISCO)"   = $mods
                 "MACROS / AUTOCLICKERS"  = $macros
                 "SERVICIOS"              = $servicios
                 "DISCO PROFUNDO"         = $disco
@@ -751,26 +794,41 @@ function Start-GlobalScan {
 }
 
 function Start-UnifiedModScan {
-    Start-ScanSession "Auditando mods..."
+    Start-ScanSession "Buscando mods en todo el disco..."
     try {
-        $mods = [System.Collections.Generic.List[string]]::new()
+        $mods  = [System.Collections.Generic.List[string]]::new()
+        $disco = [System.Collections.Generic.List[string]]::new()
+        $mal   = [System.Collections.Generic.List[string]]::new()
+        $script:ScanCount = 0
+        $script:DeepHits  = 0
+        $script:DiskModCount = 0
+        $scanStart = Get-Date
+
+        # 1) Carpeta .minecraft\mods (jar, zip)
         if (Test-Path $script:DefaultModsPath) {
             $files = @(Get-ChildItem -Path $script:DefaultModsPath -Recurse -File -Include "*.jar","*.zip" -ErrorAction SilentlyContinue)
-            $n = 0
             foreach ($mod in $files) {
-                $n++
                 if ($script:RxHacks.IsMatch($mod.Name)) {
                     $mods.Add("[MOD ILEGAL] $($mod.Name) | Ruta: $($mod.FullName)")
                 } else {
-                    $mods.Add("[MOD APROBADO] $($mod.Name) | Ruta: OK")
+                    $mods.Add("[MOD APROBADO] $($mod.Name) | Ruta: $($mod.FullName)")
                 }
-                if (($n % 10) -eq 0) { Set-Progress ([math]::Round(($n / $files.Count) * 100)) }
             }
         }
-        Add-ToLog $script:LogMods $mods
-        Publish-Results -Data @{ Mods = $mods } -Focus 'Mods'
+
+        # 2) Todos los .jar del resto de discos (Launchers, instancias, Descargas, otras unidades...)
+        Invoke-DiskScan -Disco $disco -Maliciosos $mal -Mods $mods -StartTime $scanStart -BasePct 0 -SpanPct 100
+
+        $sorted = @($mods | Sort-Object { if ($_ -match 'ILEGAL') { 0 } else { 1 } })
+        Add-ToLog $script:LogMods $sorted
+        Publish-Results -Data @{ Mods = $sorted } -Focus 'Mods'
         Set-Progress 100
-        Set-Status ("Auditoría de mods completada  ·  {0} archivos revisados" -f $mods.Count)
+        $ilegales = @($sorted | Where-Object { $_ -match 'ILEGAL' }).Count
+        if ($script:CancelRequested) {
+            Set-Status ("Búsqueda cancelada  ·  {0} mods encontrados hasta ahora  ·  {1} ilegales" -f $sorted.Count, $ilegales)
+        } else {
+            Set-Status ("Auditoría de mods completada  ·  {0} mods en el disco  ·  {1} ilegales  ·  {2:N0} archivos revisados" -f $sorted.Count, $ilegales, $script:ScanCount)
+        }
     } finally { Stop-ScanSession }
 }
 
@@ -828,48 +886,147 @@ function Start-ServicesAudit {
 }
 
 # ------------------------------------------------------------
-# OPCIÓN 03: DOOMSDAY DETECTOR (se abre en una ventana de PowerShell aparte)
+# OPCIÓN 03: DOOMSDAY DETECTOR (repositorio de GitHub -> se abre en tu PowerShell)
 # ------------------------------------------------------------
-function Start-SafeRemote {
-    param([string]$Url, [string]$Title)
-    $ans = [System.Windows.Forms.MessageBox]::Show(
-        "Se descargará y ejecutará un script remoto en una ventana de PowerShell aparte:`n`n$Url`n`n¿Continuar?",
-        $Title, 'YesNo', 'Question')
-    if ($ans -ne 'Yes') { return }
-    $cmd = "& ([ScriptBlock]::Create((Invoke-RestMethod -Uri '$Url' -UseBasicParsing -TimeoutSec 15)))"
-    $enc = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($cmd))
-    Start-Process -FilePath "powershell.exe" -WindowStyle Normal `
-        -ArgumentList "-NoProfile -ExecutionPolicy Bypass -NoExit -EncodedCommand $enc"
-    Set-Status "$Title abierto en una ventana aparte."
+function Select-ScriptFile {
+    param([string[]]$Names)
+    $dlg = New-Object System.Windows.Forms.Form
+    $dlg.Text = "DOOMSDAY DETECTOR - ELEGIR SCRIPT"
+    $dlg.StartPosition = 'CenterParent'
+    $dlg.FormBorderStyle = 'FixedDialog'
+    $dlg.MaximizeBox = $false; $dlg.MinimizeBox = $false
+    $dlg.ClientSize = New-Object System.Drawing.Size(520, 330)
+    $dlg.BackColor = $script:C.Bg
+    $dlg.ForeColor = $script:C.Text
+    $dlg.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
+
+    $lbl = New-Object System.Windows.Forms.Label
+    $lbl.Text = "El repositorio tiene varios scripts. Elige cuál ejecutar:"
+    $lbl.Location = New-Object System.Drawing.Point(20, 16)
+    $lbl.AutoSize = $true
+    $lbl.ForeColor = $script:C.Accent
+    $dlg.Controls.Add($lbl)
+
+    $lb = New-Object System.Windows.Forms.ListBox
+    $lb.SetBounds(20, 46, 480, 216)
+    $lb.BackColor = $script:C.Panel
+    $lb.ForeColor = $script:C.Text
+    $lb.BorderStyle = 'FixedSingle'
+    $lb.Font = New-Object System.Drawing.Font("Consolas", 10)
+    foreach ($n in $Names) { [void]$lb.Items.Add($n) }
+    if ($lb.Items.Count -gt 0) { $lb.SelectedIndex = 0 }
+    $dlg.Controls.Add($lb)
+
+    $ok = New-Object System.Windows.Forms.Button
+    $ok.Text = "EJECUTAR"
+    $ok.SetBounds(20, 278, 236, 36)
+    Set-FlatButtonStyle $ok $script:C.Panel2 $script:C.Accent $script:C.Border
+    $ok.DialogResult = 'OK'
+    $dlg.Controls.Add($ok)
+    $dlg.AcceptButton = $ok
+
+    $cancel = New-Object System.Windows.Forms.Button
+    $cancel.Text = "CANCELAR"
+    $cancel.SetBounds(264, 278, 236, 36)
+    Set-FlatButtonStyle $cancel $script:C.Bg $script:C.Muted $script:C.Border
+    $cancel.DialogResult = 'Cancel'
+    $dlg.Controls.Add($cancel)
+    $dlg.CancelButton = $cancel
+
+    $result = $null
+    if ($dlg.ShowDialog($script:Form) -eq 'OK' -and $lb.SelectedItem) { $result = [string]$lb.SelectedItem }
+    $dlg.Dispose()
+    return $result
 }
 
-# ------------------------------------------------------------
-# OPCIÓN 07: UTILIDADES Y MANTENIMIENTO
-# ------------------------------------------------------------
-function Start-SysMaintenance {
-    $script:CatData = @{}
-    $script:RegData = @{}
-    $script:ViewMode = 'live'
-    $script:ActiveCat = 'Stats'
-    $script:LastReport = $null
-    $script:BtnReport.Visible = $false
-    Set-Progress 0
-    $script:LblDetail.Text = ""
-    Show-Home
+function Start-Doomsday {
+    $repo  = ($script:DoomsdayRepo -replace '\.git$', '').TrimEnd('/')
+    $title = "DOOMSDAY DETECTOR"
 
     $ans = [System.Windows.Forms.MessageBox]::Show(
-        "Vista limpiada.`n`n¿Borrar también el registro acumulado de la sesión (opción 09)?",
-        "MANTENIMIENTO", 'YesNo', 'Question')
-    if ($ans -eq 'Yes') {
-        foreach ($l in @($script:LogMods, $script:LogPrefetch, $script:LogMemoria, $script:LogMacros, $script:LogServicios, $script:LogDisco)) { $l.Clear() }
-        Set-Status "Vista y registro de sesión limpiados."
-    } else {
-        Set-Status "Vista limpiada. El registro de sesión se conserva."
+        "Se descargará este repositorio:`n`n$repo`n`ny su script de PowerShell se ejecutará en una ventana aparte, con tus permisos actuales.`n`n¿Continuar?",
+        $title, 'YesNo', 'Question')
+    if ($ans -ne 'Yes') { return }
+
+    $ps1 = $null
+    Start-ScanSession "Descargando Doomsday Detector..."
+    try {
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+        $work = Join-Path $env:TEMP ("Sombrio_Doomsday_" + [guid]::NewGuid().ToString("N").Substring(0, 8))
+        [void](New-Item -ItemType Directory -Path $work -Force)
+        $zip = Join-Path $work "repo.zip"
+
+        $downloaded = $false
+        foreach ($branch in @('main', 'master')) {
+            try {
+                Set-Status "Descargando repositorio (rama $branch)..."
+                Set-Progress 20
+                Invoke-WebRequest -Uri "$repo/archive/refs/heads/$branch.zip" -OutFile $zip -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
+                $downloaded = $true
+                break
+            } catch { }
+        }
+        if (-not $downloaded) {
+            Set-Status "No se pudo descargar el repositorio."
+            Show-Info "No se pudo descargar:`n$repo`n`nRevisa tu conexión y que el repositorio sea público." $title
+            return
+        }
+
+        Set-Progress 60
+        Set-Status "Extrayendo archivos..."
+        Expand-Archive -Path $zip -DestinationPath $work -Force
+
+        $cands = @(Get-ChildItem -Path $work -Recurse -Filter "*.ps1" -File)
+        if ($cands.Count -eq 0) {
+            Set-Status "El repositorio no contiene scripts .ps1."
+            Show-Info "El repositorio no contiene ningún archivo .ps1 para ejecutar." $title
+            return
+        }
+
+        # Elegir el script: nombre configurado > nombre con 'doomsday' > único .ps1 > selector
+        $pick = $null
+        if ($script:DoomsdayScript) { $pick = $cands | Where-Object { $_.Name -eq $script:DoomsdayScript } | Select-Object -First 1 }
+        if (-not $pick) {
+            $d = @($cands | Where-Object { $_.Name -match 'doomsday' })
+            if ($d.Count -eq 1) { $pick = $d[0] }
+            elseif ($cands.Count -eq 1) { $pick = $cands[0] }
+        }
+        if (-not $pick) {
+            $map = @{}
+            foreach ($c in $cands) { $map[$c.FullName.Substring($work.Length).TrimStart('\')] = $c }
+            $sel = Select-ScriptFile -Names @($map.Keys | Sort-Object)
+            if ($sel) { $pick = $map[$sel] }
+        }
+        if (-not $pick) { Set-Status "Ejecución cancelada."; return }
+
+        Set-Progress 100
+        $ps1 = $pick.FullName
+
+        # Todos los .ps1 descargados se re-guardan en UTF-8 con BOM para que PowerShell 5.1
+        # no rompa acentos ni caracteres especiales (evita errores tipo "SESIÃ“N").
+        try {
+            $utf8Strict = [System.Text.UTF8Encoding]::new($true, $true)
+            foreach ($sf in @(Get-ChildItem -Path $work -Recurse -Filter "*.ps1" -File)) {
+                $bytes = [System.IO.File]::ReadAllBytes($sf.FullName)
+                if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { continue }
+                try { $txt = $utf8Strict.GetString($bytes) }
+                catch { $txt = [System.Text.Encoding]::Default.GetString($bytes) }   # no era UTF-8: ANSI
+                [System.IO.File]::WriteAllText($sf.FullName, $txt, [System.Text.UTF8Encoding]::new($true))
+            }
+        } catch { }
+    } finally {
+        Stop-ScanSession
+    }
+
+    if ($ps1) {
+        Start-Process -FilePath "powershell.exe" -WindowStyle Normal -WorkingDirectory (Split-Path $ps1) `
+            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$ps1`""
+        Set-Status ("{0} abierto en una ventana de PowerShell ({1})." -f $title, (Split-Path $ps1 -Leaf))
     }
 }
 
 # ------------------------------------------------------------
-# OPCIÓN 08: HUB DE HERRAMIENTAS EXTERNAS
+# OPCIÓN 08: HUB DE HERRAMIENTAS EXTERNAS (descarga y ejecuta con un clic)
 # ------------------------------------------------------------
 function Set-FlatButtonStyle {
     param($Btn, $Back, $Fore, $Border)
@@ -884,6 +1041,72 @@ function Set-FlatButtonStyle {
     $Btn.UseVisualStyleBackColor = $false
 }
 
+function Get-ExternalTool {
+    param([string]$Name, [string]$Url)
+
+    $exe = $null
+    Start-ScanSession "Descargando $Name..."
+    try {
+        try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+        $oldPref = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
+
+        $dir = Join-Path $env:TEMP ("Sombrio_Tools\" + ($Name -replace '\W', ''))
+        [void](New-Item -ItemType Directory -Path $dir -Force)
+        $tmp = Join-Path $dir "descarga.tmp"
+        if (Test-Path -LiteralPath $tmp) { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
+
+        Set-Progress 15
+        try {
+            Invoke-WebRequest -Uri $Url -OutFile $tmp -UseBasicParsing -UserAgent "Wget/1.21" -TimeoutSec 180 -ErrorAction Stop
+        } catch {
+            Set-Status "No se pudo descargar $Name."
+            Show-Info "No se pudo descargar $Name.`n`n$($_.Exception.Message)" $Name
+            return
+        } finally { $ProgressPreference = $oldPref }
+
+        Set-Progress 60
+        # Detectar el tipo real por los primeros bytes (MZ = exe, PK = zip)
+        $magic = [byte[]]::new(2)
+        $fs = [System.IO.File]::OpenRead($tmp)
+        try { [void]$fs.Read($magic, 0, 2) } finally { $fs.Dispose() }
+
+        if ($magic[0] -eq 0x4D -and $magic[1] -eq 0x5A) {
+            $exe = Join-Path $dir (($Name -replace '\W', '') + ".exe")
+            Move-Item -LiteralPath $tmp -Destination $exe -Force
+        }
+        elseif ($magic[0] -eq 0x50 -and $magic[1] -eq 0x4B) {
+            Set-Status "Extrayendo $Name..."
+            $zip = Join-Path $dir "tool.zip"
+            Move-Item -LiteralPath $tmp -Destination $zip -Force
+            $x = Join-Path $dir "extraido"
+            Expand-Archive -Path $zip -DestinationPath $x -Force
+            $cands = @(Get-ChildItem -Path $x -Recurse -Filter "*.exe" -File)
+            $exe = ($cands | Where-Object { $_.FullName -match 'amd64|x64' -and $_.Name -match 'SystemInformer' } | Select-Object -First 1).FullName
+            if (-not $exe) { $exe = ($cands | Select-Object -First 1).FullName }
+        }
+
+        if (-not $exe) {
+            Set-Status "El archivo descargado de $Name no es ejecutable."
+            Show-Info "Lo descargado no parece un .exe ni un .zip válido.`nSe abrirá la página en el navegador como alternativa." $Name
+            Start-Process $Url
+            return
+        }
+        Set-Progress 100
+    } finally {
+        Stop-ScanSession
+    }
+
+    if ($exe) {
+        try {
+            Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe)
+            Set-Status ("{0} descargado y ejecutado  ·  {1}" -f $Name, $exe)
+        } catch {
+            Set-Status "No se pudo ejecutar $Name."
+            Show-Info "Se descargó en:`n$exe`n`npero no se pudo ejecutar:`n$($_.Exception.Message)" $Name
+        }
+    }
+}
+
 function Start-Hubs {
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text = "HERRAMIENTAS EXTERNAS"
@@ -896,27 +1119,24 @@ function Start-Hubs {
     $dlg.Font = New-Object System.Drawing.Font("Segoe UI", 9.5)
 
     $lbl = New-Object System.Windows.Forms.Label
-    $lbl.Text = "Selecciona una herramienta:"
+    $lbl.Text = "Selecciona una herramienta (se descarga y ejecuta):"
     $lbl.Location = New-Object System.Drawing.Point(24, 18)
     $lbl.AutoSize = $true
     $lbl.ForeColor = $script:C.Accent
     $dlg.Controls.Add($lbl)
 
     $b1 = New-Object System.Windows.Forms.Button
-    $b1.Text = "System Informer"
+    $b1.Text = "System Informer  (descargar y ejecutar)"
     $b1.SetBounds(24, 55, 332, 40)
     Set-FlatButtonStyle $b1 $script:C.Panel2 $script:C.Text $script:C.Border
-    $b1.Add_Click({ Start-Process "https://sourceforge.net/projects/systeminformer/" })
+    $b1.Add_Click({ param($s, $e) $s.FindForm().Tag = 'si'; $s.FindForm().Close() })
     $dlg.Controls.Add($b1)
 
     $b2 = New-Object System.Windows.Forms.Button
-    $b2.Text = "JournalTrace"
+    $b2.Text = "JournalTrace  (descargar y ejecutar)"
     $b2.SetBounds(24, 105, 332, 40)
     Set-FlatButtonStyle $b2 $script:C.Panel2 $script:C.Text $script:C.Border
-    $b2.Add_Click({
-        if ($script:JournalTraceUrl) { Start-Process $script:JournalTraceUrl }
-        else { Show-Info "No hay enlace configurado para JournalTrace.`nEdítalo en la variable `$script:JournalTraceUrl al inicio del script." "JournalTrace" }
-    })
+    $b2.Add_Click({ param($s, $e) $s.FindForm().Tag = 'jt'; $s.FindForm().Close() })
     $dlg.Controls.Add($b2)
 
     $b3 = New-Object System.Windows.Forms.Button
@@ -928,7 +1148,13 @@ function Start-Hubs {
     $dlg.CancelButton = $b3
 
     [void]$dlg.ShowDialog($script:Form)
+    $choice = [string]$dlg.Tag
     $dlg.Dispose()
+
+    switch ($choice) {
+        'si' { Get-ExternalTool -Name "System Informer" -Url $script:SystemInformerUrl }
+        'jt' { Get-ExternalTool -Name "JournalTrace"    -Url $script:JournalTraceUrl }
+    }
 }
 
 # ------------------------------------------------------------
@@ -978,11 +1204,10 @@ function Invoke-Action([string]$Tag) {
         switch ($Tag) {
             'global'   { Start-GlobalScan }
             'mods'     { Start-UnifiedModScan }
-            'doomsday' { Start-SafeRemote -Url "https://raw.githubusercontent.com/zedoonvm1/powershell-scripts/refs/heads/main/DoomsDayDetector.ps1" -Title "DOOMSDAY DETECTOR" }
+            'doomsday' { Start-Doomsday }
             'prefetch' { Start-TraceScan }
             'macros'   { Start-MacroAutoclickScan }
             'services' { Start-ServicesAudit }
-            'utils'    { Start-SysMaintenance }
             'hubs'     { Start-Hubs }
             'registry' { Start-ShowRegistry }
             'exit'     { $script:Form.Close() }
@@ -1094,7 +1319,6 @@ function New-MainForm {
         @('04', 'Análisis de Prefetch (solo)',    'prefetch'),
         @('05', 'Búsqueda de Macros & Autoclick', 'macros'),
         @('06', 'Auditoría de Servicios Windows', 'services'),
-        @('07', 'Utilidades y Mantenimiento',     'utils'),
         @('08', 'Hub de Herramientas Externas',   'hubs'),
         @('09', 'Registro de Análisis (Memoria)', 'registry'),
         @('10', 'Salir del Framework',            'exit'),
@@ -1340,6 +1564,6 @@ try {
         "EL SOMBRIO IF", 'OK', 'Error')
 } finally {
     if ($script:HiddenConsole -ne [IntPtr]::Zero) {
-        try { [void][Sombrio.Win]::ShowWindow($script:HiddenConsole, 5) } catch { }
+        try { [void][Sombrio.WinApi]::ShowWindow($script:HiddenConsole, 5) } catch { }
     }
 }
