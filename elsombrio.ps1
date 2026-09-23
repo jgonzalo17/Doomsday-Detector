@@ -1,4 +1,4 @@
-\xEF\xBB\xBF#Requires -Version 5.1
+#Requires -Version 5.1
 
 # ============================================================
 # EL SOMBRIO IF - FORENSIC SCANNER (MASTER V74) - EDICIÓN APP (GUI)
@@ -11,7 +11,7 @@
 
 $script:AutoElevate     = $true   # $true = pedir permisos de Administrador (UAC) al abrir
 $script:DoomsdayRepo     = "https://github.com/jgonzalo17/Doomsday-Detector.git"
-$script:DoomsdayScript   = ""   # (opcional) nombre exacto del .ps1 dentro del repo; vacío = detectar solo
+$script:DoomsdayScript   = "elsombrio.ps1"   # nombre exacto del detector dentro del repo
 $script:SystemInformerUrl = "https://sourceforge.net/projects/systeminformer/files/latest/download"
 $script:JournalTraceUrl   = "https://github.com/ponei/JournalTrace/releases/download/1.0/JournalTrace.exe"
 # URL raw de ESTE script en tu GitHub (para poder abrirlo con un solo comando y pedir UAC).
@@ -99,6 +99,7 @@ $script:ViewMode        = 'live'      # 'live' = resultados | 'registry' = regis
 $script:ActiveCat       = 'Stats'
 $script:CatData         = @{}
 $script:RegData         = @{}
+$script:RecycleMeta     = @{}
 $script:CatButtons      = @{}
 $script:NavButtons      = [System.Collections.Generic.List[object]]::new()
 
@@ -111,6 +112,7 @@ $script:LogMemoria   = [System.Collections.Generic.List[string]]::new()
 $script:LogMacros    = [System.Collections.Generic.List[string]]::new()
 $script:LogServicios = [System.Collections.Generic.List[string]]::new()
 $script:LogDisco     = [System.Collections.Generic.List[string]]::new()
+$script:LogPapelera  = [System.Collections.Generic.List[string]]::new()
 
 function Add-ToLog([System.Collections.Generic.List[string]]$LogList, [array]$Items) {
     if ($null -ne $Items) {
@@ -338,6 +340,97 @@ function Show-Info([string]$Text, [string]$Title = "EL SOMBRIO IF") {
     [void][System.Windows.Forms.MessageBox]::Show($Text, $Title, 'OK', 'Information')
 }
 
+# ------------------------------------------------------------
+# PAPELERA: abrir directamente la ubicación con confirmación
+# ------------------------------------------------------------
+function Open-SelectedPath([string]$Path, [string]$OriginalPath = "", [string]$DeletedAt = "", [string]$RecyclePath = "", [string]$Name = "") {
+    if ([string]::IsNullOrWhiteSpace($Path) -and [string]::IsNullOrWhiteSpace($OriginalPath) -and [string]::IsNullOrWhiteSpace($RecyclePath)) {
+        Show-Info "No se encontró una ruta válida para este elemento." "PAPELERA"
+        return
+    }
+
+    $target = if (-not [string]::IsNullOrWhiteSpace($OriginalPath) -and (Test-Path -LiteralPath $OriginalPath)) {
+        $OriginalPath
+    } elseif (-not [string]::IsNullOrWhiteSpace($Path) -and (Test-Path -LiteralPath $Path)) {
+        $Path
+    } elseif (-not [string]::IsNullOrWhiteSpace($RecyclePath) -and (Test-Path -LiteralPath $RecyclePath)) {
+        $RecyclePath
+    } else {
+        $OriginalPath
+    }
+
+    $displayName = if ($Name) { $Name } else { [IO.Path]::GetFileName($target) }
+    $dateLine = if ($DeletedAt) { "Eliminado: $DeletedAt`n" } else { "" }
+    $originalLine = if ($OriginalPath) { "Ruta original: $OriginalPath`n" } else { "" }
+    $recycleLine = if ($RecyclePath) { "Ruta en Papelera: $RecyclePath`n" } else { "" }
+
+    $ans = [System.Windows.Forms.MessageBox]::Show(
+        "Archivo: $displayName`n`n$dateLine$originalLine$recycleLine`n¿Deseas abrir la ubicación seleccionada?",
+        "CONFIRMAR APERTURA",
+        'YesNo',
+        'Question'
+    )
+    if ($ans -ne 'Yes') { return }
+
+    try {
+        # 1) Archivo original: abrir directamente seleccionándolo en el Explorador.
+        if (-not [string]::IsNullOrWhiteSpace($OriginalPath) -and (Test-Path -LiteralPath $OriginalPath)) {
+            Start-Process -FilePath "explorer.exe" -ArgumentList ('/select,"' + $OriginalPath + '"')
+            return
+        }
+
+        # 2) Archivo físico de la Papelera: abrir la carpeta y seleccionar el elemento.
+        if (-not [string]::IsNullOrWhiteSpace($RecyclePath) -and (Test-Path -LiteralPath $RecyclePath)) {
+            Start-Process -FilePath "explorer.exe" -ArgumentList ('/select,"' + $RecyclePath + '"')
+            return
+        }
+
+        # 3) Ruta normal de otro módulo.
+        if (-not [string]::IsNullOrWhiteSpace($Path) -and (Test-Path -LiteralPath $Path)) {
+            Start-Process -FilePath "explorer.exe" -ArgumentList ('/select,"' + $Path + '"')
+            return
+        }
+
+        $parent = if ($OriginalPath) { Split-Path -Path $OriginalPath -Parent -ErrorAction SilentlyContinue } else { Split-Path -Path $Path -Parent -ErrorAction SilentlyContinue }
+        if ($parent -and (Test-Path -LiteralPath $parent)) {
+            Start-Process -FilePath "explorer.exe" -ArgumentList @($parent)
+        } else {
+            Show-Info "La ruta ya no está disponible:`n`n$OriginalPath" "PAPELERA"
+        }
+    } catch {
+        Show-Info "No se pudo abrir la ubicación:`n`n$target`n`n$($_.Exception.Message)" "PAPELERA"
+    }
+}
+
+function Open-SelectedGridItem {
+    $row = $script:Grid.CurrentRow
+    if (-not $row) { return }
+
+    # Las filas de Papelera llevan el objeto exacto en Tag, evitando depender del texto de la tabla.
+    if ($script:ActiveCat -eq 'Papelera' -and $row.Tag) {
+        $meta = $row.Tag
+        Open-SelectedPath -Path ([string]$meta.Path) `
+            -OriginalPath ([string]$meta.OriginalPath) `
+            -DeletedAt ([string]$meta.DeletedAt) `
+            -RecyclePath ([string]$meta.RecyclePath) `
+            -Name ([string]$meta.Name)
+        return
+    }
+
+    $detail = [string]$row.Cells[2].Value
+    $path = ""
+    if ($detail -match 'Ruta original:\s*(.*?)\s*\|\s*Eliminado:') {
+        $path = $Matches[1].Trim()
+    } elseif ($detail -match 'Ruta:\s*(.*?)(?:\s*\|\s*Eliminado:|$)') {
+        $path = $Matches[1].Trim()
+    }
+    if ([string]::IsNullOrWhiteSpace($path)) {
+        Show-Info "Esta fila no contiene una ruta de archivo abrible." "RUTA"
+        return
+    }
+    Open-SelectedPath -Path $path
+}
+
 # ============================================================
 # PROGRESO / ESTADO
 # ============================================================
@@ -381,6 +474,7 @@ function Start-ScanSession([string]$Text) {
     }
     $script:BtnCancel.Visible = $true
     $script:BtnReport.Visible = $false
+    $script:BtnOpenSelected.Visible = $false
     $script:LblDetail.Text = ""
     Set-Progress 0
     Set-Status $Text
@@ -391,6 +485,7 @@ function Stop-ScanSession {
     foreach ($b in $script:NavButtons) { $b.Enabled = $true }
     $script:BtnCancel.Visible = $false
     if ($script:LastReport -and (Test-Path -LiteralPath $script:LastReport)) { $script:BtnReport.Visible = $true }
+    $script:BtnOpenSelected.Visible = $true
     Invoke-UiPump
     if ($script:CloseAfter) { $script:Form.Close() }
 }
@@ -402,6 +497,7 @@ $script:CatDefs = @(
     @{ Key = "Stats";      Text = "ESTADÍSTICAS" },
     @{ Key = "Memoria";    Text = "MEMORIA" },
     @{ Key = "Prefetch";   Text = "PREFETCH" },
+    @{ Key = "Papelera";   Text = "PAPELERA" },
     @{ Key = "Maliciosos"; Text = "MALICIOSOS" },
     @{ Key = "Mods";       Text = "MODS" },
     @{ Key = "Macros";     Text = "MACROS" },
@@ -450,6 +546,9 @@ function Show-Category([string]$Key) {
             $p = Split-ReportItem ([string]$it)
             $i = $g.Rows.Add($p.Tag, $p.Name, $p.Detail)
             $row = $g.Rows[$i]
+            if ($Key -eq "Papelera" -and $script:RecycleMeta.ContainsKey([string]$it)) {
+                $row.Tag = $script:RecycleMeta[[string]$it]
+            }
             if ($p.Header) {
                 $row.DefaultCellStyle.ForeColor = $script:C.TealDim
                 $row.DefaultCellStyle.Font = $script:FontBold
@@ -473,6 +572,7 @@ function Move-HomeArt {
 }
 
 function Show-Home {
+    if ($script:BtnOpenSelected) { $script:BtnOpenSelected.Visible = $false }
     $script:Grid.Visible  = $false
     $script:Chips.Visible = $false
     $script:HomeArt.Visible  = $true
@@ -481,6 +581,7 @@ function Show-Home {
 }
 
 function Show-Results {
+    if ($script:BtnOpenSelected) { $script:BtnOpenSelected.Visible = $true }
     $script:HomeArt.Visible  = $false
     $script:Grid.Visible  = $true
     $script:Chips.Visible = $true
@@ -626,6 +727,8 @@ function Start-GlobalScan {
 
         $script:ScanCount = 0
         $script:DeepHits  = 0
+        $papeleraData = [System.Collections.Generic.List[string]]::new()
+        $script:RecycleMeta = @{}
         $scanStart = Get-Date
         $cRam = 0; $cPref = 0; $cPap = 0; $cMods = 0; $cSvc = 3
 
@@ -668,16 +771,50 @@ function Start-GlobalScan {
         # 3 - Papelera
         if (-not $script:CancelRequested) {
             try {
-                Set-Phase 3 7 "3/7  Volcando Papelera de Reciclaje..."
+                Set-Phase 3 7 "3/7  Analizando Papelera de Reciclaje..."
                 $shell    = New-Object -ComObject Shell.Application
                 $papelera = $shell.NameSpace(10)
+
                 if ($papelera) {
                     $cPap = $papelera.Items().Count
+
                     foreach ($item in $papelera.Items()) {
-                        if ($script:RxHacks.IsMatch($item.Name)) {
-                            $maliciosos.Add("[PAPELERA HACK] $($item.Name) | Ruta: $($item.Path)")
+                        $name = [string]$item.Name
+                        $originalPath = ""
+                        $deletedAt = $null
+                        $recyclePath = [string]$item.Path
+
+                        try { $originalPath = [string]$item.ExtendedProperty("System.Recycle.ItemPathDisplay") } catch { }
+                        try { $deletedAt = $item.ExtendedProperty("System.Recycle.DateDeleted") } catch { }
+
+                        if ([string]::IsNullOrWhiteSpace($originalPath)) {
+                            try { $originalPath = [string]$item.ExtendedProperty("System.ItemPathDisplay") } catch { }
+                        }
+
+                        $deletedText = if ($deletedAt -is [datetime]) {
+                            $deletedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                        } elseif ($deletedAt) {
+                            [string]$deletedAt
+                        } else {
+                            "Fecha no disponible"
+                        }
+
+                        $entry = "[PAPELERA] $name | Ruta original: $originalPath | Eliminado: $deletedText | Papelera: $recyclePath"
+                        $papeleraData.Add($entry)
+                        $script:RecycleMeta[$entry] = [pscustomobject]@{
+                            Name = $name
+                            OriginalPath = $originalPath
+                            DeletedAt = $deletedText
+                            RecyclePath = $recyclePath
+                            Path = $recyclePath
+                        }
+
+                        if ($script:RxHacks.IsMatch($name)) {
+                            $maliciosos.Add("[PAPELERA HACK] $name | Ruta original: $originalPath | Eliminado: $deletedText")
                         }
                     }
+
+                    Add-ToLog $script:LogPapelera $papeleraData
                 }
             } catch { }
         }
@@ -766,6 +903,7 @@ function Start-GlobalScan {
                 "ESTADÍSTICAS"           = $statsBox
                 "MEMORIA / PROCESOS"     = $memoria
                 "PREFETCH DE HOY"        = $prefetchHoy
+                "PAPELERA DE RECICLAJE" = $papeleraData
                 "MALICIOSOS"             = $maliciosos
                 "MODS (TODO EL DISCO)"   = $mods
                 "MACROS / AUTOCLICKERS"  = $macros
@@ -776,7 +914,7 @@ function Start-GlobalScan {
 
         $focus = if ($maliciosos.Count -gt 0) { 'Maliciosos' } else { 'Stats' }
         Publish-Results -Data @{
-            Stats = $statsBox; Memoria = $memoria; Prefetch = $prefetchHoy; Maliciosos = $maliciosos
+            Stats = $statsBox; Memoria = $memoria; Prefetch = $prefetchHoy; Papelera = $papeleraData; Maliciosos = $maliciosos
             Mods = $mods; Macros = $macros; Servicios = $servicios; Disco = $disco
         } -Focus $focus
 
@@ -830,6 +968,64 @@ function Start-UnifiedModScan {
             Set-Status ("Auditoría de mods completada  ·  {0} mods en el disco  ·  {1} ilegales  ·  {2:N0} archivos revisados" -f $sorted.Count, $ilegales, $script:ScanCount)
         }
     } finally { Stop-ScanSession }
+}
+
+function Start-RecycleBinScan {
+    Start-ScanSession "Analizando Papelera de Reciclaje..."
+    try {
+        $papeleraData = [System.Collections.Generic.List[string]]::new()
+        $mal = [System.Collections.Generic.List[string]]::new()
+        $script:RecycleMeta = @{}
+
+        $shell = New-Object -ComObject Shell.Application
+        $papelera = $shell.NameSpace(10)
+
+        if ($papelera) {
+            foreach ($item in $papelera.Items()) {
+                $name = [string]$item.Name
+                $originalPath = ""
+                $deletedAt = $null
+                $recyclePath = [string]$item.Path
+
+                try { $originalPath = [string]$item.ExtendedProperty("System.Recycle.ItemPathDisplay") } catch { }
+                try { $deletedAt = $item.ExtendedProperty("System.Recycle.DateDeleted") } catch { }
+                if ([string]::IsNullOrWhiteSpace($originalPath)) {
+                    try { $originalPath = [string]$item.ExtendedProperty("System.ItemPathDisplay") } catch { }
+                }
+
+                $deletedText = if ($deletedAt -is [datetime]) {
+                    $deletedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                } elseif ($deletedAt) {
+                    [string]$deletedAt
+                } else {
+                    "Fecha no disponible"
+                }
+
+                $entry = "[PAPELERA] $name | Ruta original: $originalPath | Eliminado: $deletedText | Papelera: $recyclePath"
+                $papeleraData.Add($entry)
+                $script:RecycleMeta[$entry] = [pscustomobject]@{
+                    Name = $name
+                    OriginalPath = $originalPath
+                    DeletedAt = $deletedText
+                    RecyclePath = $recyclePath
+                    Path = $recyclePath
+                }
+
+                if ($script:RxHacks.IsMatch($name)) {
+                    $mal.Add("[PAPELERA HACK] $name | Ruta original: $originalPath | Eliminado: $deletedText")
+                }
+            }
+        }
+
+        Add-ToLog $script:LogPapelera $papeleraData
+        Publish-Results -Data @{ Papelera = $papeleraData; Maliciosos = $mal } -Focus 'Papelera'
+        Set-Progress 100
+        Set-Status ("Papelera analizada  ·  {0} elementos  ·  selecciona un archivo y pulsa ABRIR SELECCIONADO o haz doble clic" -f $papeleraData.Count)
+    } catch {
+        Set-Status ("Error al analizar la Papelera: " + $_.Exception.Message)
+    } finally {
+        Stop-ScanSession
+    }
 }
 
 function Start-TraceScan {
@@ -940,88 +1136,39 @@ function Select-ScriptFile {
 }
 
 function Start-Doomsday {
-    $repo  = ($script:DoomsdayRepo -replace '\.git$', '').TrimEnd('/')
     $title = "DOOMSDAY DETECTOR"
+    $rawUrl = "https://raw.githubusercontent.com/zedoonvm1/powershell-scripts/refs/heads/main/DoomsDayDetector.ps1"
 
     $ans = [System.Windows.Forms.MessageBox]::Show(
-        "Se descargará este repositorio:`n`n$repo`n`ny su script de PowerShell se ejecutará en una ventana aparte, con tus permisos actuales.`n`n¿Continuar?",
+        "Se ejecutará directamente Doomsday Detector desde:`n`n$rawUrl`n`nSe abrirá una nueva ventana de PowerShell y se ejecutará el detector.`n`n¿Continuar?",
         $title, 'YesNo', 'Question')
     if ($ans -ne 'Yes') { return }
 
-    $ps1 = $null
-    Start-ScanSession "Descargando Doomsday Detector..."
     try {
-        try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
-        $work = Join-Path $env:TEMP ("Sombrio_Doomsday_" + [guid]::NewGuid().ToString("N").Substring(0, 8))
-        [void](New-Item -ItemType Directory -Path $work -Force)
-        $zip = Join-Path $work "repo.zip"
+        $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        if (-not (Test-Path -LiteralPath $psExe)) { $psExe = 'powershell.exe' }
 
-        $downloaded = $false
-        foreach ($branch in @('main', 'master')) {
-            try {
-                Set-Status "Descargando repositorio (rama $branch)..."
-                Set-Progress 20
-                Invoke-WebRequest -Uri "$repo/archive/refs/heads/$branch.zip" -OutFile $zip -UseBasicParsing -TimeoutSec 60 -ErrorAction Stop
-                $downloaded = $true
-                break
-            } catch { }
-        }
-        if (-not $downloaded) {
-            Set-Status "No se pudo descargar el repositorio."
-            Show-Info "No se pudo descargar:`n$repo`n`nRevisa tu conexión y que el repositorio sea público." $title
-            return
-        }
+        # Windows PowerShell 5.1 no admite &&. Usamos ; y ejecutamos exactamente
+        # el mismo flujo: Bypass -> Invoke-RestMethod -> Invoke-Expression.
+        $command = "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; Invoke-Expression (Invoke-RestMethod '$rawUrl')"
 
-        Set-Progress 60
-        Set-Status "Extrayendo archivos..."
-        Expand-Archive -Path $zip -DestinationPath $work -Force
+        $proc = Start-Process -FilePath $psExe `
+            -ArgumentList @(
+                '-NoLogo',
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-NoExit',
+                '-Command', $command
+            ) `
+            -WindowStyle Normal `
+            -PassThru `
+            -ErrorAction Stop
 
-        $cands = @(Get-ChildItem -Path $work -Recurse -Filter "*.ps1" -File)
-        if ($cands.Count -eq 0) {
-            Set-Status "El repositorio no contiene scripts .ps1."
-            Show-Info "El repositorio no contiene ningún archivo .ps1 para ejecutar." $title
-            return
-        }
-
-        # Elegir el script: nombre configurado > nombre con 'doomsday' > único .ps1 > selector
-        $pick = $null
-        if ($script:DoomsdayScript) { $pick = $cands | Where-Object { $_.Name -eq $script:DoomsdayScript } | Select-Object -First 1 }
-        if (-not $pick) {
-            $d = @($cands | Where-Object { $_.Name -match 'doomsday' })
-            if ($d.Count -eq 1) { $pick = $d[0] }
-            elseif ($cands.Count -eq 1) { $pick = $cands[0] }
-        }
-        if (-not $pick) {
-            $map = @{}
-            foreach ($c in $cands) { $map[$c.FullName.Substring($work.Length).TrimStart('\')] = $c }
-            $sel = Select-ScriptFile -Names @($map.Keys | Sort-Object)
-            if ($sel) { $pick = $map[$sel] }
-        }
-        if (-not $pick) { Set-Status "Ejecución cancelada."; return }
-
-        Set-Progress 100
-        $ps1 = $pick.FullName
-
-        # Todos los .ps1 descargados se re-guardan en UTF-8 con BOM para que PowerShell 5.1
-        # no rompa acentos ni caracteres especiales (evita errores tipo "SESIÃ“N").
-        try {
-            $utf8Strict = [System.Text.UTF8Encoding]::new($true, $true)
-            foreach ($sf in @(Get-ChildItem -Path $work -Recurse -Filter "*.ps1" -File)) {
-                $bytes = [System.IO.File]::ReadAllBytes($sf.FullName)
-                if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) { continue }
-                try { $txt = $utf8Strict.GetString($bytes) }
-                catch { $txt = [System.Text.Encoding]::Default.GetString($bytes) }   # no era UTF-8: ANSI
-                [System.IO.File]::WriteAllText($sf.FullName, $txt, [System.Text.UTF8Encoding]::new($true))
-            }
-        } catch { }
-    } finally {
-        Stop-ScanSession
+        Set-Status ("Doomsday Detector iniciado  ·  PID {0}" -f $proc.Id)
     }
-
-    if ($ps1) {
-        Start-Process -FilePath "powershell.exe" -WindowStyle Normal -WorkingDirectory (Split-Path $ps1) `
-            -ArgumentList "-NoProfile -ExecutionPolicy Bypass -NoExit -File `"$ps1`""
-        Set-Status ("{0} abierto en una ventana de PowerShell ({1})." -f $title, (Split-Path $ps1 -Leaf))
+    catch {
+        Set-Status "No se pudo iniciar Doomsday Detector."
+        Show-Info "No se pudo abrir PowerShell para ejecutar el detector.`n`nURL:`n$rawUrl`n`nError:`n$($_.Exception.Message)" $title
     }
 }
 
@@ -1175,6 +1322,7 @@ function Start-ShowRegistry {
         "Macros y autoclickers | Total: $($script:LogMacros.Count)",
         "Servicios Windows | Total: $($script:LogServicios.Count)",
         "Disco profundo | Total: $($script:LogDisco.Count)",
+        "Papelera | Total: $($script:LogPapelera.Count)",
         "====== RESULTADO DE AMENAZAS ======",
         "Hallazgos maliciosos en el registro (ROJOS) | Total: $($mal.Count)"
     )
@@ -1188,6 +1336,7 @@ function Start-ShowRegistry {
         Macros     = @($script:LogMacros)
         Servicios  = @($script:LogServicios)
         Disco      = @($script:LogDisco)
+        Papelera   = @($script:LogPapelera)
     }
     $script:ViewMode  = 'registry'
     $script:ActiveCat = 'Stats'
@@ -1206,6 +1355,7 @@ function Invoke-Action([string]$Tag) {
             'mods'     { Start-UnifiedModScan }
             'doomsday' { Start-Doomsday }
             'prefetch' { Start-TraceScan }
+            'papelera' { Start-RecycleBinScan }
             'macros'   { Start-MacroAutoclickScan }
             'services' { Start-ServicesAudit }
             'hubs'     { Start-Hubs }
@@ -1315,7 +1465,8 @@ function New-MainForm {
     $navDefs = @(
         @('01', 'Escaneo Global Optimizado',      'global'),
         @('02', 'Auditoría de Mods e Instancias', 'mods'),
-        @('03', 'Doomsday Detector (Nube)',       'doomsday'),
+        @('03', 'Doomsday Detector',               'doomsday'),
+        @('07', 'Papelera de Reciclaje',          'papelera'),
         @('04', 'Análisis de Prefetch (solo)',    'prefetch'),
         @('05', 'Búsqueda de Macros & Autoclick', 'macros'),
         @('06', 'Auditoría de Servicios Windows', 'services'),
@@ -1423,6 +1574,10 @@ function New-MainForm {
         $dbProp.SetValue($g, $true, $null)
     } catch { }
     $script:Grid = $g
+    $g.Add_CellDoubleClick({
+        param($s, $e)
+        if ($e.RowIndex -ge 0) { Open-SelectedGridItem }
+    })
     $hostPanel.Controls.Add($g)
 
     # Arte de inicio (la chica original)
@@ -1531,6 +1686,18 @@ function New-MainForm {
         try { if ($script:LastReport) { Start-Process -FilePath $script:LastReport } } catch { Show-Info "No se pudo abrir el reporte." }
     })
     $btnPanel.Controls.Add($script:BtnReport)
+
+    # Abrir el archivo/ruta de la fila seleccionada con confirmación.
+    $script:BtnOpenSelected = New-Object System.Windows.Forms.Button
+    $script:BtnOpenSelected.Text = "ABRIR SELECCIONADO"
+    $script:BtnOpenSelected.Size = New-Object System.Drawing.Size(190, 26)
+    $script:BtnOpenSelected.Margin = $zeroPad
+    $script:BtnOpenSelected.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 8.5)
+    $script:BtnOpenSelected.Visible = $false
+    Set-FlatButtonStyle $script:BtnOpenSelected $C.Panel2 $C.Green $C.Border
+    $script:BtnOpenSelected.Add_Click({ Open-SelectedGridItem })
+    $btnPanel.Controls.Add($script:BtnOpenSelected)
+
     $st.Controls.Add($btnPanel, 1, 2)
 
     $root.Controls.Add($st, 0, 2)
