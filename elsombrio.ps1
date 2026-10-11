@@ -1244,6 +1244,7 @@ function Start-GlobalScan {
                 }
             } catch { }
         }
+
         # 4 - Mods
         if (-not $script:CancelRequested) {
             try {
