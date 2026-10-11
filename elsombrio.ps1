@@ -1,12 +1,18 @@
 #Requires -Version 5.1
 
 # ============================================================
-# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V74) - EDICIÓN APP (GUI)
-#   - Se abre como una aplicación de Windows (sin consola visible).
-#   - Menú lateral con los mismos módulos 00-10.
-#   - Resultados en tablas por categoría (Memoria, Prefetch, Maliciosos, ...).
-#   - Barra de progreso real, monitor en vivo y botón Cancelar.
-#   - Registro de sesión (opción 09) separado por categorías.
+# EL SOMBRIO IF - FORENSIC SCANNER (MASTER V75) - EDICIÓN APP (GUI)
+#   V75 - Novedades:
+#     [11] LILITH SERVICES (lilith-ps) integrado en el menú.
+#     MODS separados por versión de Minecraft (detectada del nombre,
+#          de la carpeta y del interior del .jar: fabric.mod.json,
+#          mods.toml, mcmod.info, quilt.mod.json).
+#     Detección de MACROS mejorada: procesos, software instalado
+#          (registro), tareas programadas, servicios, archivos en
+#          carpetas del usuario y carpeta de Inicio.
+#     Interfaz renovada: paleta violeta/magenta (cyberpunk),
+#          barra de progreso con borde y relleno magenta,
+#          barras de acento laterales y nuevos colores de tabla.
 # ============================================================
 
 $script:AutoElevate     = $true   # $true = pedir permisos de Administrador (UAC) al abrir
@@ -14,9 +20,10 @@ $script:DoomsdayRepo     = "https://github.com/jgonzalo17/Doomsday-Detector.git"
 $script:DoomsdayScript   = "elsombrio.ps1"   # nombre exacto del detector dentro del repo
 $script:SystemInformerUrl = "https://sourceforge.net/projects/systeminformer/files/latest/download"
 $script:JournalTraceUrl   = "https://github.com/ponei/JournalTrace/releases/download/1.0/JournalTrace.exe"
+$script:LilithServicesUrl = "https://raw.githubusercontent.com/praiselily/lilith-ps/refs/heads/main/Services.ps1"
 # URL raw de ESTE script en tu GitHub (para poder abrirlo con un solo comando y pedir UAC).
 # Cambia el nombre del archivo si lo subes con otro nombre.
-$script:SelfUrl         = "https://raw.githubusercontent.com/jgonzalo17/Doomsday-Detector/main/Sombrio_V74_GUI.ps1"
+$script:SelfUrl         = "https://raw.githubusercontent.com/jgonzalo17/Doomsday-Detector/main/Sombrio_V75_GUI.ps1"
 $script:IsChild         = (($args -contains "--sombrio-child") -or [bool]$global:SombrioChild)
 
 # ------------------------------------------------------------
@@ -102,6 +109,7 @@ $script:RegData         = @{}
 $script:RecycleMeta     = @{}
 $script:CatButtons      = @{}
 $script:NavButtons      = [System.Collections.Generic.List[object]]::new()
+$script:JarVersionProbes = 0           # límite de aperturas de .jar para detectar versión
 
 # ------------------------------------------------------------
 # MEMORIA DE SESIÓN INDEPENDIENTE (Para la Opción 09)
@@ -127,26 +135,27 @@ function Add-ToLog([System.Collections.Generic.List[string]]$LogList, [array]$It
 }
 
 # ------------------------------------------------------------
-# PALETA DE COLORES
+# PALETA DE COLORES (V75 - CYBERPUNK VIOLETA / MAGENTA)
 # ------------------------------------------------------------
 $script:C = @{
-    Bg      = [System.Drawing.Color]::FromArgb(9, 13, 24)
-    Panel   = [System.Drawing.Color]::FromArgb(14, 21, 38)
-    Panel2  = [System.Drawing.Color]::FromArgb(21, 32, 57)
-    Row2    = [System.Drawing.Color]::FromArgb(17, 26, 46)
-    Border  = [System.Drawing.Color]::FromArgb(34, 56, 100)
-    Hover   = [System.Drawing.Color]::FromArgb(30, 50, 92)
-    Select  = [System.Drawing.Color]::FromArgb(32, 64, 118)
-    Accent  = [System.Drawing.Color]::FromArgb(0, 210, 255)
-    Blue    = [System.Drawing.Color]::FromArgb(64, 122, 255)
-    DBlue   = [System.Drawing.Color]::FromArgb(44, 84, 196)
-    Text    = [System.Drawing.Color]::FromArgb(200, 224, 255)
-    Muted   = [System.Drawing.Color]::FromArgb(112, 136, 176)
-    Red     = [System.Drawing.Color]::FromArgb(255, 95, 95)
-    RedDark = [System.Drawing.Color]::FromArgb(120, 34, 44)
-    Green   = [System.Drawing.Color]::FromArgb(90, 225, 140)
-    Yellow  = [System.Drawing.Color]::FromArgb(255, 214, 90)
-    TealDim = [System.Drawing.Color]::FromArgb(90, 170, 190)
+    Bg      = [System.Drawing.Color]::FromArgb(12, 8, 20)
+    Panel   = [System.Drawing.Color]::FromArgb(18, 12, 32)
+    Panel2  = [System.Drawing.Color]::FromArgb(26, 17, 46)
+    Row2    = [System.Drawing.Color]::FromArgb(21, 14, 38)
+    Border  = [System.Drawing.Color]::FromArgb(66, 44, 118)
+    Hover   = [System.Drawing.Color]::FromArgb(48, 30, 88)
+    Select  = [System.Drawing.Color]::FromArgb(62, 38, 112)
+    Accent  = [System.Drawing.Color]::FromArgb(197, 122, 255)
+    Pink    = [System.Drawing.Color]::FromArgb(255, 79, 205)
+    Blue    = [System.Drawing.Color]::FromArgb(102, 140, 255)
+    DBlue   = [System.Drawing.Color]::FromArgb(72, 94, 210)
+    Text    = [System.Drawing.Color]::FromArgb(228, 220, 248)
+    Muted   = [System.Drawing.Color]::FromArgb(156, 136, 200)
+    Red     = [System.Drawing.Color]::FromArgb(255, 96, 112)
+    RedDark = [System.Drawing.Color]::FromArgb(128, 34, 52)
+    Green   = [System.Drawing.Color]::FromArgb(100, 238, 164)
+    Yellow  = [System.Drawing.Color]::FromArgb(255, 214, 110)
+    TealDim = [System.Drawing.Color]::FromArgb(122, 202, 224)
 }
 
 # ------------------------------------------------------------
@@ -229,14 +238,20 @@ $script:RegexHacks = (($script:IllegalKeywords | ForEach-Object {
     if ($_.Length -le 5) { "\b$_\b" } else { $_ }
 }) -join "|")
 
+# V75 - Lista de macros/autoclickers ampliada y mejorada
 $script:MacroAutoclickCritical = @(
     "autoclicker", "auto-clicker", "auto_click", "autoclick", "clickbot", "click-bot",
     "gsautoclick", "gs auto clicker", "opautoclick", "op auto clicker",
-    "jitbit", "murgee", "tinytask", "freeautoclicker", "free auto clicker",
-    "automouseclick", "auto mouse click", "mouserecorder", "robomouse",
+    "fastclick", "fast clicker", "perfectclick", "perfect clicker", "clickstorm",
+    "speed autoclicker", "extreme auto clicker", "super fast clicker",
+    "freeautoclicker", "free auto clicker", "auto clicker typer",
+    "jitbit", "murgee", "tinytask",
+    "automouseclick", "auto mouse click", "mouserecorder", "robomouse", "ghost mouse",
+    "supermouse", "super mouse", "mini mouse macro", "x-mouse", "xmouse",
     "macrorecorder", "macro-recorder", "macro_recorder", "macro creator",
-    "pulover", "pulovers macro",
-    "autohotkey", "ahk_", "\.ahk", "autoit", "\.au3",
+    "macro express", "mouse and keyboard recorder",
+    "pulover", "pulovers macro", "macroscheduler",
+    "autohotkey", "ahk_", "\.ahk", "autoit", "\.au3", "\.vbs", "\.scr",
     "logitech gaming software", "lghub", "g hub", "razer synapse", "synapse3", "synapse2",
     "icue", "corsair icue", "steelseries engine", "bloody7", "a4tech", "redragon"
 )
@@ -249,8 +264,83 @@ $script:RxMacroCritical   = [regex]::new($script:RegexMacroCritical, $script:RxO
 $script:RxPathWhitelist   = [regex]::new($script:PathWhitelistPatterns, $script:RxOpts)
 $script:RxMcProcess       = [regex]::new("java|javaw|lunarclient|craft", $script:RxOpts)
 $script:RxJavaNames       = [regex]::new("javaw?\.exe|lunarclient|minecraft|craft", $script:RxOpts)
+$script:RxMcVersion       = [regex]::new("(?<![\d._])1[._](\d{1,2})([._]\d+)?", $script:RxOpts)
 
 $script:WindowsServices = @("dps", "appinfo", "pcasvc", "eventlog", "sysmain", "dusmsvc", "bam")
+
+# ============================================================
+# DETECCIÓN DE VERSIÓN DE MINECRAFT DE UN MOD (V75)
+#   Orden: 1) nombre del archivo  2) carpeta padre  3) metadatos dentro del .jar
+# ============================================================
+function Get-JarMcVersion {
+    param([string]$Path, [string]$FileName)
+    if ($FileName -and $script:RxMcVersion.IsMatch($FileName)) {
+        return (($script:RxMcVersion.Match($FileName).Value) -replace '_', '.')
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Path)) {
+        $parent = Split-Path -Path $Path -Parent -ErrorAction SilentlyContinue
+        if ($parent -and $script:RxMcVersion.IsMatch($parent)) {
+            return (($script:RxMcVersion.Match($parent).Value) -replace '_', '.')
+        }
+        # Abrir el .jar solo un número limitado de veces para no frenar el escaneo
+        if ($script:JarVersionProbes -lt 400 -and (Test-Path -LiteralPath $Path)) {
+            try {
+                $len = (Get-Item -LiteralPath $Path -ErrorAction Stop).Length
+                if ($len -lt 80MB) {
+                    $script:JarVersionProbes++
+                    Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction SilentlyContinue
+                    $zip = [System.IO.Compression.ZipFile]::OpenRead($Path)
+                    try {
+                        foreach ($metaName in @('fabric.mod.json', 'quilt.mod.json', 'neoforge.mods.toml', 'META-INF/mods.toml', 'mcmod.info')) {
+                            $entry = $zip.GetEntry($metaName)
+                            if (-not $entry) { continue }
+                            $sr = New-Object System.IO.StreamReader($entry.Open())
+                            try { $txt = $sr.ReadToEnd() } finally { $sr.Dispose() }
+                            if ($txt -match '"minecraft"\s*:\s*"[^"]*?(1[._]\d{1,2}([._]\d+)?)') {
+                                return (("1." + $Matches[1]) + $(if ($Matches[2]) { ($Matches[2] -replace '_','.') } else { '' }))
+                            }
+                            if ($txt -match 'versionRange\s*=\s*"?\[?~?>=<\s]*1[._](\d{1,2})([._]\d+)?') {
+                                return (("1." + $Matches[1]) + $(if ($Matches[2]) { ($Matches[2] -replace '_','.') } else { '' }))
+                            }
+                            if ($txt -match 'acceptedMinecraftVersions\s*=\s*"?\[?1[._](\d{1,2})([._]\d+)?') {
+                                return (("1." + $Matches[1]) + $(if ($Matches[2]) { ($Matches[2] -replace '_','.') } else { '' }))
+                            }
+                        }
+                    } finally { $zip.Dispose() }
+                }
+            } catch { }
+        }
+    }
+    return "Desconocida"
+}
+
+# ------------------------------------------------------------
+# V75 - Agrupa los mods por versión de Minecraft y pone los
+# ilegales primero dentro de cada grupo.
+# ------------------------------------------------------------
+function Group-ModsByVersion {
+    param([array]$ModItems)
+    $groups = [ordered]@{}
+    foreach ($it in @($ModItems)) {
+        $path = ""
+        if ([string]$it -match '\|\s*Ruta:\s*(.+?)\s*$') { $path = $Matches[1].Trim() }
+        $name = if ($path) { [IO.Path]::GetFileName($path) } else { "" }
+        $ver  = Get-JarMcVersion -Path $path -FileName $name
+        if (-not $groups.Contains($ver)) { $groups[$ver] = [System.Collections.Generic.List[string]]::new() }
+        $groups[$ver].Add([string]$it)
+    }
+    $sortedKeys = @($groups.Keys | Sort-Object -Descending {
+        if ($_ -eq 'Desconocida') { [version]'0.0.0' } else { try { [version]$_ } catch { [version]'0.0.1' } }
+    })
+    $result = [System.Collections.Generic.List[string]]::new()
+    foreach ($vk in $sortedKeys) {
+        $result.Add("====== MINECRAFT $vk ======")
+        foreach ($m in (@($groups[$vk]) | Sort-Object { if ($_ -match 'ILEGAL') { 0 } else { 1 } })) {
+            $result.Add($m)
+        }
+    }
+    return $result
+}
 
 # ============================================================
 # MOTOR DECOMPRESSOR SEGURO (se compila al abrir la ventana)
@@ -265,7 +355,7 @@ public class SombrioDecompressor {
     public static extern uint RtlGetCompressionWorkSpaceSize(ushort CompressionFormat, out uint CompressBufferWorkSpaceSize, out uint CompressFragmentWorkSpaceSize);
     public static byte[] Decompress(byte[] compressed) {
         if (compressed == null || compressed.Length < 8) return null;
-        if (compressed[0] != 0x4D || compressed[1] != 0x41 || compressed[2] != 0x4D) return null;
+        if (compressed[0] != 0x4D || compressed[1] != 0x41 || compressed[2] != 0x43) return null;
         int uncompSize = BitConverter.ToInt32(compressed, 4);
         uint wsComp, wsFrag;
         if (RtlGetCompressionWorkSpaceSize(4, out wsComp, out wsFrag) != 0) return null;
@@ -297,7 +387,7 @@ function Test-Administrator {
 
 function Get-ItemColor {
     param([string]$Text)
-    if ($Text -match 'ILEGAL|MALICIOSO|AUTOCLICK|AUTOCICK|HACK\b|PELIGRO|CRITICO') { return "Red" }
+    if ($Text -match 'ILEGAL|MALICIOSO|AUTOCLICK|AUTOCICK|HACK\b|PELIGRO|CRITICO|MACRO') { return "Red" }
     if ($script:RxJavaNames.IsMatch($Text) -or $Text -match '\[JAVA\]') { return "Green" }
     if ($Text -match 'APROBADO|NORMAL|RUNNING|OK|\[MOD') { return "Green" }
     if ($Text -match '======') { return "DarkCyan" }
@@ -527,7 +617,7 @@ function Update-Chips {
         $active = ($k -eq $script:ActiveCat)
         $btn.ForeColor = if ($hasRed) { $script:C.Red } else { $script:C.Text }
         $btn.BackColor = if ($active) { $script:C.Select } else { $script:C.Panel2 }
-        $btn.FlatAppearance.BorderColor = if ($active) { $script:C.Accent } elseif ($hasRed) { $script:C.RedDark } else { $script:C.Border }
+        $btn.FlatAppearance.BorderColor = if ($active) { $script:C.Pink } elseif ($hasRed) { $script:C.RedDark } else { $script:C.Border }
     }
 }
 
@@ -550,7 +640,8 @@ function Show-Category([string]$Key) {
                 $row.Tag = $script:RecycleMeta[[string]$it]
             }
             if ($p.Header) {
-                $row.DefaultCellStyle.ForeColor = $script:C.TealDim
+                # V75: encabezados de versión de Minecraft en magenta, el resto en teal
+                $row.DefaultCellStyle.ForeColor = if ($p.Name -match 'MINECRAFT') { $script:C.Pink } else { $script:C.TealDim }
                 $row.DefaultCellStyle.Font = $script:FontBold
             } elseif ($Key -eq 'Maliciosos') {
                 $row.DefaultCellStyle.ForeColor = $script:C.Red
@@ -602,10 +693,10 @@ function Publish-Results {
 # ============================================================
 function Save-Report {
     param($Sections)
-    $path = Join-Path ([Environment]::GetFolderPath("Desktop")) "Reporte_Sombrio_V74.txt"
+    $path = Join-Path ([Environment]::GetFolderPath("Desktop")) "Reporte_Sombrio_V75.txt"
     $sb = [System.Text.StringBuilder]::new()
     [void]$sb.AppendLine("===============================================================")
-    [void]$sb.AppendLine(" REPORTE FORENSE - EL SOMBRIO IF V74")
+    [void]$sb.AppendLine(" REPORTE FORENSE - EL SOMBRIO IF V75")
     [void]$sb.AppendLine((" Fecha: {0}  |  Equipo: {1}  |  Usuario: {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $env:COMPUTERNAME, $env:USERNAME))
     [void]$sb.AppendLine("===============================================================")
     foreach ($title in $Sections.Keys) {
@@ -727,6 +818,7 @@ function Start-GlobalScan {
 
         $script:ScanCount = 0
         $script:DeepHits  = 0
+        $script:JarVersionProbes = 0
         $papeleraData = [System.Collections.Generic.List[string]]::new()
         $script:RecycleMeta = @{}
         $scanStart = Get-Date
@@ -838,10 +930,23 @@ function Start-GlobalScan {
             } catch { }
         }
 
-        # 5 - Macros
+        # 5 - Macros (V75: procesos + software instalado + startup)
         if (-not $script:CancelRequested) {
             try {
-                Set-Phase 5 7 "5/7  Verificando Macros y Periféricos..."
+                Set-Phase 5 7 "5/7  Verificando Macros, Autoclickers y software de periféricos..."
+                foreach ($proc in (Get-Process -ErrorAction SilentlyContinue | Where-Object { $script:RxMacroCritical.IsMatch($_.Name) })) {
+                    $macros.Add("[PROCESO MALICIOSO] $($proc.Name).exe | Ruta: Memoria (PID: $($proc.Id))")
+                    $maliciosos.Add("[EN MEMORIA] $($proc.Name).exe | PID: $($proc.Id)")
+                }
+                $uninstallKeys = @(
+                    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                    'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
+                foreach ($app in (Get-ItemProperty -Path $uninstallKeys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -and $script:RxMacroCritical.IsMatch($_.DisplayName) })) {
+                    $loc = if ($app.InstallLocation) { $app.InstallLocation } else { "Registro de Windows" }
+                    $macros.Add("[SOFTWARE MACRO INSTALADO] $($app.DisplayName) | Ruta: $loc")
+                    $maliciosos.Add("[SOFTWARE MACRO] $($app.DisplayName) | Ruta: $loc")
+                }
                 foreach ($kp in @(
                     @{ Path = "$env:USERPROFILE\AppData\Local\LGHUB\settings.db"; Name = "Logitech G HUB" },
                     @{ Path = "$env:APPDATA\AutoHotkey"; Name = "AutoHotkey" }
@@ -851,6 +956,17 @@ function Start-GlobalScan {
                         $maliciosos.Add("[SOFTWARE MACRO] $($kp.Name) | Ruta: $($kp.Path)")
                     }
                 }
+                try {
+                    $startup = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
+                    if (Test-Path $startup) {
+                        foreach ($f in (Get-ChildItem -Path $startup -Recurse -File -Include *.exe,*.ahk,*.au3,*.vbs,*.bat,*.ps1 -ErrorAction SilentlyContinue)) {
+                            if ($script:RxMacroCritical.IsMatch($f.Name)) {
+                                $macros.Add("[ARCHIVO MACRO] $($f.Name) | Ruta: $($f.FullName)")
+                                $maliciosos.Add("[ARCHIVO MACRO] $($f.Name) | Ruta: $($f.FullName)")
+                            }
+                        }
+                    }
+                } catch { }
                 Add-ToLog $script:LogMacros $macros
             } catch { }
         }
@@ -880,11 +996,10 @@ function Start-GlobalScan {
             } catch { }
         }
 
-        # Mods: primero los ilegales, y se guardan en el registro de sesión
-        $modsSorted = @($mods | Sort-Object { if ($_ -match 'ILEGAL') { 0 } else { 1 } })
-        $mods = [System.Collections.Generic.List[string]]::new()
-        foreach ($m in $modsSorted) { $mods.Add($m) }
-        Add-ToLog $script:LogMods $mods
+        # V75 - Mods separados por versión de Minecraft (ilegales primero dentro de cada grupo)
+        $modsGrouped = [System.Collections.Generic.List[string]](Group-ModsByVersion $mods)
+        $verCount = @($modsGrouped | Where-Object { $_ -match '^=+\s*MINECRAFT' }).Count
+        Add-ToLog $script:LogMods $modsGrouped
         $cMods += $script:DiskModCount
 
         $statsBox.Add("====== ELEMENTOS PROCESADOS ======")
@@ -892,6 +1007,7 @@ function Start-GlobalScan {
         $statsBox.Add("Archivos en Prefetch evaluados | Total: $cPref")
         $statsBox.Add("Archivos en Papelera de Reciclaje | Total: $cPap")
         $statsBox.Add("Mods analizados (.minecraft + todo el disco) | Total: $cMods")
+        $statsBox.Add("Versiones de Minecraft detectadas | Total: $verCount")
         $statsBox.Add("Servicios críticos de Windows | Total: $cSvc")
         $statsBox.Add("Archivos de disco escaneados | Total: $script:ScanCount")
         $statsBox.Add("====== RESULTADO DE AMENAZAS ======")
@@ -905,7 +1021,7 @@ function Start-GlobalScan {
                 "PREFETCH DE HOY"        = $prefetchHoy
                 "PAPELERA DE RECICLAJE" = $papeleraData
                 "MALICIOSOS"             = $maliciosos
-                "MODS (TODO EL DISCO)"   = $mods
+                "MODS (POR VERSIÓN)"     = $modsGrouped
                 "MACROS / AUTOCLICKERS"  = $macros
                 "SERVICIOS"              = $servicios
                 "DISCO PROFUNDO"         = $disco
@@ -915,7 +1031,7 @@ function Start-GlobalScan {
         $focus = if ($maliciosos.Count -gt 0) { 'Maliciosos' } else { 'Stats' }
         Publish-Results -Data @{
             Stats = $statsBox; Memoria = $memoria; Prefetch = $prefetchHoy; Papelera = $papeleraData; Maliciosos = $maliciosos
-            Mods = $mods; Macros = $macros; Servicios = $servicios; Disco = $disco
+            Mods = $modsGrouped; Macros = $macros; Servicios = $servicios; Disco = $disco
         } -Focus $focus
 
         Set-Progress 100
@@ -940,6 +1056,7 @@ function Start-UnifiedModScan {
         $script:ScanCount = 0
         $script:DeepHits  = 0
         $script:DiskModCount = 0
+        $script:JarVersionProbes = 0
         $scanStart = Get-Date
 
         # 1) Carpeta .minecraft\mods (jar, zip)
@@ -957,7 +1074,9 @@ function Start-UnifiedModScan {
         # 2) Todos los .jar del resto de discos (Launchers, instancias, Descargas, otras unidades...)
         Invoke-DiskScan -Disco $disco -Maliciosos $mal -Mods $mods -StartTime $scanStart -BasePct 0 -SpanPct 100
 
-        $sorted = @($mods | Sort-Object { if ($_ -match 'ILEGAL') { 0 } else { 1 } })
+        # V75 - separar por versión
+        $sorted = [System.Collections.Generic.List[string]](Group-ModsByVersion $mods)
+        $verCount = @($sorted | Where-Object { $_ -match '^=+\s*MINECRAFT' }).Count
         Add-ToLog $script:LogMods $sorted
         Publish-Results -Data @{ Mods = $sorted } -Focus 'Mods'
         Set-Progress 100
@@ -965,7 +1084,7 @@ function Start-UnifiedModScan {
         if ($script:CancelRequested) {
             Set-Status ("Búsqueda cancelada  ·  {0} mods encontrados hasta ahora  ·  {1} ilegales" -f $sorted.Count, $ilegales)
         } else {
-            Set-Status ("Auditoría de mods completada  ·  {0} mods en el disco  ·  {1} ilegales  ·  {2:N0} archivos revisados" -f $sorted.Count, $ilegales, $script:ScanCount)
+            Set-Status ("Auditoría de mods completada  ·  {0} mods en {1} versiones  ·  {2} ilegales  ·  {3:N0} archivos revisados" -f (@($sorted | Where-Object { $_ -notmatch '======' })).Count, $verCount, $ilegales, $script:ScanCount)
         }
     } finally { Stop-ScanSession }
 }
@@ -1050,17 +1169,78 @@ function Start-TraceScan {
     } finally { Stop-ScanSession }
 }
 
+# ------------------------------------------------------------
+# V75 - Búsqueda de MACROS mejorada:
+#   1) Procesos activos
+#   2) Software instalado (registro de desinstalación)
+#   3) Tareas programadas sospechosas
+#   4) Servicios con nombres sospechosos
+#   5) Archivos en Escritorio, Descargas y carpeta de Inicio
+# ------------------------------------------------------------
 function Start-MacroAutoclickScan {
-    Start-ScanSession "Buscando macros y autoclickers en memoria..."
+    Start-ScanSession "Buscando macros, autoclickers y software de periféricos..."
     try {
         $macros = [System.Collections.Generic.List[string]]::new()
+        $mal    = [System.Collections.Generic.List[string]]::new()
+
+        # 1) Procesos activos
         foreach ($proc in (Get-Process -ErrorAction SilentlyContinue | Where-Object { $script:RxMacroCritical.IsMatch($_.Name) })) {
             $macros.Add("[PROCESO MALICIOSO] $($proc.Name).exe | PID: $($proc.Id)")
+            $mal.Add("[EN MEMORIA] $($proc.Name).exe | PID: $($proc.Id)")
         }
+
+        # 2) Software instalado (registro HKCU/HKLM, incluido WOW6432Node)
+        try {
+            $uninstallKeys = @(
+                'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*')
+            foreach ($app in (Get-ItemProperty -Path $uninstallKeys -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -and $script:RxMacroCritical.IsMatch($_.DisplayName) })) {
+                $loc = if ($app.InstallLocation) { $app.InstallLocation } elseif ($app.UninstallString) { $app.UninstallString } else { "Registro de Windows" }
+                $macros.Add("[SOFTWARE MACRO INSTALADO] $($app.DisplayName) | Ruta: $loc")
+                $mal.Add("[SOFTWARE MACRO] $($app.DisplayName) | Ruta: $loc")
+            }
+        } catch { }
+
+        # 3) Tareas programadas sospechosas
+        try {
+            foreach ($task in (Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.Actions })) {
+                foreach ($act in $task.Actions) {
+                    $target = (([string]$act.Execute) + " " + ([string]$act.Arguments)).Trim()
+                    if ($target -and $script:RxMacroCritical.IsMatch($target)) {
+                        $macros.Add("[TAREA PROGRAMADA SOSPECHOSA] $($task.TaskPath)$($task.TaskName) | Ruta: $target")
+                        $mal.Add("[TAREA PROGRAMADA] $($task.TaskPath)$($task.TaskName) | Ruta: $target")
+                        break
+                    }
+                }
+            }
+        } catch { }
+
+        # 4) Servicios con nombres sospechosos
+        try {
+            foreach ($srv in (Get-Service -ErrorAction SilentlyContinue | Where-Object { $script:RxMacroCritical.IsMatch(($_.Name + " " + $_.DisplayName)) })) {
+                $macros.Add("[SERVICIO MACRO] $($srv.Name) ($($srv.DisplayName)) | Estado: $($srv.Status)")
+                $mal.Add("[SERVICIO MACRO] $($srv.Name) | Estado: $($srv.Status)")
+            }
+        } catch { }
+
+        # 5) Archivos en carpetas de usuario y carpeta de Inicio
+        try {
+            $roots = @("$env:USERPROFILE\Desktop", "$env:USERPROFILE\Downloads", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup") | Where-Object { Test-Path $_ }
+            foreach ($root in $roots) {
+                foreach ($f in (Get-ChildItem -Path $root -Recurse -Depth 3 -File -Include *.exe,*.ahk,*.au3,*.vbs,*.bat,*.ps1,*.cmd -ErrorAction SilentlyContinue)) {
+                    if ($script:RxMacroCritical.IsMatch($f.Name)) {
+                        $macros.Add("[ARCHIVO MACRO] $($f.Name) | Ruta: $($f.FullName)")
+                        $mal.Add("[ARCHIVO MACRO] $($f.Name) | Ruta: $($f.FullName)")
+                    }
+                }
+            }
+        } catch { }
+
         Add-ToLog $script:LogMacros $macros
-        Publish-Results -Data @{ Macros = $macros } -Focus 'Macros'
+        Publish-Results -Data @{ Macros = $macros; Maliciosos = $mal } -Focus 'Macros'
         Set-Progress 100
-        Set-Status ("Búsqueda de macros completada  ·  {0} hallazgos" -f $macros.Count)
+        Set-Status ("Búsqueda de macros completada  ·  {0} hallazgos (procesos, software instalado, tareas, servicios y archivos)" -f $macros.Count)
     } finally { Stop-ScanSession }
 }
 
@@ -1169,6 +1349,46 @@ function Start-Doomsday {
     catch {
         Set-Status "No se pudo iniciar Doomsday Detector."
         Show-Info "No se pudo abrir PowerShell para ejecutar el detector.`n`nURL:`n$rawUrl`n`nError:`n$($_.Exception.Message)" $title
+    }
+}
+
+# ------------------------------------------------------------
+# V75 - OPCIÓN 11: LILITH SERVICES (lilith-ps)
+# ------------------------------------------------------------
+function Start-LilithServices {
+    $title = "LILITH SERVICES"
+    $rawUrl = $script:LilithServicesUrl
+
+    $ans = [System.Windows.Forms.MessageBox]::Show(
+        "Se ejecutará Lilith Services desde:`n`n$rawUrl`n`nSe abrirá una nueva ventana de PowerShell con Bypass de política y se ejecutará el script.`n`n¿Continuar?",
+        $title, 'YesNo', 'Question')
+    if ($ans -ne 'Yes') { return }
+
+    try {
+        $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        if (-not (Test-Path -LiteralPath $psExe)) { $psExe = 'powershell.exe' }
+
+        # NOTA: el operador '&&' NO existe en Windows PowerShell 5.1.
+        # Se usa ';' que encadena los comandos con la misma semántica.
+        $command = "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force; Invoke-Expression (Invoke-RestMethod '$rawUrl')"
+
+        $proc = Start-Process -FilePath $psExe `
+            -ArgumentList @(
+                '-NoLogo',
+                '-NoProfile',
+                '-ExecutionPolicy', 'Bypass',
+                '-NoExit',
+                '-Command', $command
+            ) `
+            -WindowStyle Normal `
+            -PassThru `
+            -ErrorAction Stop
+
+        Set-Status ("Lilith Services iniciado  ·  PID {0}" -f $proc.Id)
+    }
+    catch {
+        Set-Status "No se pudo iniciar Lilith Services."
+        Show-Info "No se pudo abrir PowerShell para ejecutar Lilith Services.`n`nURL:`n$rawUrl`n`nError:`n$($_.Exception.Message)" $title
     }
 }
 
@@ -1360,6 +1580,7 @@ function Invoke-Action([string]$Tag) {
             'services' { Start-ServicesAudit }
             'hubs'     { Start-Hubs }
             'registry' { Start-ShowRegistry }
+            'lilith'   { Start-LilithServices }
             'exit'     { $script:Form.Close() }
             'panic'    { [Environment]::Exit(0) }
         }
@@ -1379,7 +1600,7 @@ function New-MainForm {
 
     # ---------- Formulario ----------
     $f = New-Object System.Windows.Forms.Form
-    $f.Text = "EL SOMBRIO IF - FORENSIC SCANNER V74 [EDICION PRO]"
+    $f.Text = "EL SOMBRIO IF - FORENSIC SCANNER V75 [EDICIÓN PRO]"
     $f.StartPosition = 'CenterScreen'
     $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
     $f.Size = New-Object System.Drawing.Size([math]::Min(1360, $wa.Width - 40), [math]::Min(860, $wa.Height - 40))
@@ -1409,7 +1630,7 @@ function New-MainForm {
     $banner.AutoSize = $true
     $banner.Location = New-Object System.Drawing.Point(24, 8)
     $banner.Font = New-Object System.Drawing.Font("Consolas", 9, [System.Drawing.FontStyle]::Bold)
-    $banner.ForeColor = $C.Blue
+    $banner.ForeColor = $C.Pink
     $banner.Text = $script:BannerText.TrimEnd()
     $header.Controls.Add($banner)
 
@@ -1418,7 +1639,7 @@ function New-MainForm {
     $sub.Location = New-Object System.Drawing.Point(26, 102)
     $sub.Font = New-Object System.Drawing.Font("Consolas", 9)
     $sub.ForeColor = $C.Accent
-    $sub.Text = "[ ENTERPRISE FORENSIC FRAMEWORK - SECURE RUNTIME ]"
+    $sub.Text = "[ ENTERPRISE FORENSIC FRAMEWORK V75 - SECURE RUNTIME ]"
     $header.Controls.Add($sub)
 
     $adm = New-Object System.Windows.Forms.Label
@@ -1428,15 +1649,15 @@ function New-MainForm {
     $adm.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
     if (Test-Administrator) {
         $adm.ForeColor = $C.Green
-        $adm.Text = "ESTADO: PRIVILEGIOS DE ADMINISTRADOR ACTIVOS`nFORENSIC SCANNER V74  ·  EDICIÓN PRO"
+        $adm.Text = "ESTADO: PRIVILEGIOS DE ADMINISTRADOR ACTIVOS`nFORENSIC SCANNER V75  ·  EDICIÓN PRO"
     } else {
         $adm.ForeColor = $C.Yellow
-        $adm.Text = "AVISO: EJECUTE COMO ADMINISTRADOR PARA MÁXIMA EFECTIVIDAD`nFORENSIC SCANNER V74  ·  EDICIÓN PRO"
+        $adm.Text = "AVISO: EJECUTE COMO ADMINISTRADOR PARA MÁXIMA EFECTIVIDAD`nFORENSIC SCANNER V75  ·  EDICIÓN PRO"
     }
     $header.Controls.Add($adm)
 
     $line = New-Object System.Windows.Forms.Panel
-    $line.Dock = 'Bottom'; $line.Height = 2; $line.BackColor = $C.Accent
+    $line.Dock = 'Bottom'; $line.Height = 2; $line.BackColor = $C.Pink
     $header.Controls.Add($line)
     $root.Controls.Add($header, 0, 0)
 
@@ -1449,11 +1670,17 @@ function New-MainForm {
     [void]$body.RowStyles.Add((New-Object System.Windows.Forms.RowStyle('Percent', 100)))
     $root.Controls.Add($body, 0, 1)
 
-    # ----- Menú lateral -----
+    # ----- Menú lateral (con franja magenta a la izquierda) -----
+    $sideWrap = New-Object System.Windows.Forms.Panel
+    $sideWrap.Dock = 'Fill'; $sideWrap.BackColor = $C.Panel; $sideWrap.Margin = $zeroPad
+
     $side = New-Object System.Windows.Forms.FlowLayoutPanel
     $side.Dock = 'Fill'; $side.FlowDirection = 'TopDown'; $side.WrapContents = $false
     $side.AutoScroll = $true; $side.BackColor = $C.Panel; $side.Margin = $zeroPad
     $side.Padding = New-Object System.Windows.Forms.Padding(12, 14, 8, 8)
+
+    $sideStrip = New-Object System.Windows.Forms.Panel
+    $sideStrip.Dock = 'Left'; $sideStrip.Width = 3; $sideStrip.BackColor = $C.Pink
 
     $sideTitle = New-Object System.Windows.Forms.Label
     $sideTitle.Text = "MÓDULOS OPERATIVOS"
@@ -1472,6 +1699,7 @@ function New-MainForm {
         @('06', 'Auditoría de Servicios Windows', 'services'),
         @('08', 'Hub de Herramientas Externas',   'hubs'),
         @('09', 'Registro de Análisis (Memoria)', 'registry'),
+        @('11', 'Lilith Services (lilith-ps)',    'lilith'),
         @('10', 'Salir del Framework',            'exit'),
         @('00', 'EXIT SILENCIOSO (PANIC BUTTON)', 'panic')
     )
@@ -1484,12 +1712,16 @@ function New-MainForm {
         $b.TextAlign = 'MiddleLeft'
         $b.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
         if ($d[2] -eq 'panic') { Set-FlatButtonStyle $b $C.Bg $C.Red $C.RedDark }
+        elseif ($d[2] -eq 'lilith') { Set-FlatButtonStyle $b $C.Panel2 $C.Pink $C.Border }
         else                   { Set-FlatButtonStyle $b $C.Panel2 $C.Text $C.Border }
         $b.Add_Click({ param($s, $e) Invoke-Action ([string]$s.Tag) })
         $side.Controls.Add($b)
         $script:NavButtons.Add($b)
     }
-    $body.Controls.Add($side, 0, 0)
+    # El último control agregado se acopla primero: la franja queda en el borde izquierdo exterior
+    $sideWrap.Controls.Add($side)
+    $sideWrap.Controls.Add($sideStrip)
+    $body.Controls.Add($sideWrap, 0, 0)
 
     # ----- Contenido -----
     $content = New-Object System.Windows.Forms.TableLayoutPanel
@@ -1549,7 +1781,7 @@ function New-MainForm {
     $g.ColumnHeadersHeightSizeMode = 'DisableResizing'
     $g.ColumnHeadersHeight = 36
     $g.ColumnHeadersDefaultCellStyle.BackColor = $C.Panel2
-    $g.ColumnHeadersDefaultCellStyle.ForeColor = $C.Accent
+    $g.ColumnHeadersDefaultCellStyle.ForeColor = $C.Pink
     $g.ColumnHeadersDefaultCellStyle.SelectionBackColor = $C.Panel2
     $g.ColumnHeadersDefaultCellStyle.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9.5)
     $g.ColumnHeadersDefaultCellStyle.Padding = New-Object System.Windows.Forms.Padding(8, 0, 0, 0)
@@ -1580,7 +1812,7 @@ function New-MainForm {
     })
     $hostPanel.Controls.Add($g)
 
-    # Arte de inicio (la chica original)
+    # Arte de inicio (la chica original, recoloreada a la paleta V75)
     $lines = @($script:sideGirl)
     $nonEmpty = $lines | Where-Object { $_.Trim().Length -gt 0 }
     $minIndent = ($nonEmpty | ForEach-Object { $_.Length - $_.TrimStart().Length } | Measure-Object -Minimum).Minimum
@@ -1595,7 +1827,10 @@ function New-MainForm {
         $ln = $lines[$i]
         $ln = $ln.Substring([math]::Min($minIndent, $ln.Length)).TrimEnd()
         if ($ln.Length -gt $maxLen) { $maxLen = $ln.Length }
-        $col = if ($i -ge 12 -and $i -le 24) { $C.DBlue } elseif ($i -gt 24 -and $i -le 48) { $C.Blue } else { $C.Accent }
+        $col = if     ($i -le 11) { $C.Accent }
+               elseif ($i -le 24) { $C.Pink }
+               elseif ($i -le 40) { $C.Blue }
+               else               { $C.DBlue }
         $rtb.SelectionStart = $rtb.TextLength; $rtb.SelectionLength = 0
         $rtb.SelectionColor = $col
         $rtb.SelectedText = $ln + "`n"
@@ -1618,6 +1853,12 @@ function New-MainForm {
     $body.Controls.Add($content, 1, 0)
 
     # ---------- Barra inferior: estado, progreso y monitor en vivo ----------
+    $statusWrap = New-Object System.Windows.Forms.Panel
+    $statusWrap.Dock = 'Fill'; $statusWrap.BackColor = $C.Panel; $statusWrap.Margin = $zeroPad
+
+    $topStrip = New-Object System.Windows.Forms.Panel
+    $topStrip.Dock = 'Top'; $topStrip.Height = 2; $topStrip.BackColor = $C.Pink
+
     $st = New-Object System.Windows.Forms.TableLayoutPanel
     $st.Dock = 'Fill'; $st.ColumnCount = 2; $st.RowCount = 3
     $st.Margin = $zeroPad; $st.BackColor = $C.Panel
@@ -1639,20 +1880,25 @@ function New-MainForm {
     $script:LblPct = New-Object System.Windows.Forms.Label
     $script:LblPct.Dock = 'Fill'; $script:LblPct.TextAlign = 'MiddleRight'
     $script:LblPct.Font = New-Object System.Drawing.Font("Consolas", 12, [System.Drawing.FontStyle]::Bold)
-    $script:LblPct.ForeColor = $C.Accent
+    $script:LblPct.ForeColor = $C.Pink
     $script:LblPct.Text = "0%"
     $st.Controls.Add($script:LblPct, 1, 0)
 
+    # V75 - Barra de progreso con borde de acento y relleno magenta
+    $trackBack = New-Object System.Windows.Forms.Panel
+    $trackBack.Dock = 'Fill'; $trackBack.BackColor = $C.Border
+    $trackBack.Margin = New-Object System.Windows.Forms.Padding(0, 4, 0, 4)
     $track = New-Object System.Windows.Forms.Panel
     $track.Dock = 'Fill'; $track.BackColor = $C.Panel2
-    $track.Margin = New-Object System.Windows.Forms.Padding(0, 4, 0, 4)
+    $track.Margin = New-Object System.Windows.Forms.Padding(1)
     $fill = New-Object System.Windows.Forms.Panel
-    $fill.Dock = 'Left'; $fill.Width = 0; $fill.BackColor = $C.Accent
+    $fill.Dock = 'Left'; $fill.Width = 0; $fill.BackColor = $C.Pink
     $track.Controls.Add($fill)
-    $script:BarTrack = $track; $script:BarFill = $fill
-    $track.Add_Resize({ Set-Progress $script:ProgressPct })
-    $st.Controls.Add($track, 0, 1)
-    $st.SetColumnSpan($track, 2)
+    $trackBack.Controls.Add($track)
+    $script:BarTrack = $trackBack; $script:BarFill = $fill
+    $trackBack.Add_Resize({ Set-Progress $script:ProgressPct })
+    $st.Controls.Add($trackBack, 0, 1)
+    $st.SetColumnSpan($trackBack, 2)
 
     $script:LblDetail = New-Object System.Windows.Forms.Label
     $script:LblDetail.Dock = 'Fill'; $script:LblDetail.TextAlign = 'MiddleLeft'
@@ -1700,7 +1946,11 @@ function New-MainForm {
 
     $st.Controls.Add($btnPanel, 1, 2)
 
-    $root.Controls.Add($st, 0, 2)
+    # El último control agregado se acopla primero: la franja magenta queda arriba del todo
+    $statusWrap.Controls.Add($st)
+    $statusWrap.Controls.Add($topStrip)
+
+    $root.Controls.Add($statusWrap, 0, 2)
 
     # ---------- Eventos de la ventana ----------
     $f.Add_FormClosing({
