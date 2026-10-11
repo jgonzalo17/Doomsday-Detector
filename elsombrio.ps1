@@ -1,3 +1,4 @@
+#Requires -Version 5.1
 # ============================================================
 # MODULO [14] EVASION - EL SOMBRIO IF  (v2: una categoria, detalle expandible)
 # Una sola categoria ("Evasion") con 8 secciones + resumen expandible.
@@ -153,8 +154,10 @@ function Test-ModFile($File) {
                 )
             }
         } catch {
-            if ("$($_.Exception.Message)" -match '404') {
-                Add-Ev 'RENOMBRADO' $n 'MODIFICADO: hash no existe en Modrinth' $File.FullName ((Get-EvFileFacts $File) + @(
+            $code = $null
+            try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+            if ($code -eq 404 -or "$($_.Exception.Message)" -match '\b404\b') {
+                Add-Ev 'RENOMBRADO' $n 'MODIFICADO: hash no existe en Modrinth' $File.FullName (Get-EvFileFacts $File + @(
                     'Comparacion: el SHA1 de este archivo NO existe en Modrinth',
                     'Conclusion: mod modificado, renombrado o descargado de otra fuente',
                     $(if ($modId) { "mod_id declarado: $modId" })
@@ -278,7 +281,7 @@ function Invoke-Ev2 {
             $cnt = @(Get-ChildItem -LiteralPath $rb.FullName -Force -ErrorAction SilentlyContinue).Count
             if ($rb.LastWriteTime -gt (Get-Date).AddHours(-2) -and $cnt -eq 0) {
                 Add-Ev 'SOSPECHOSO' 'Papelera vaciada hace poco' "Ultima modificacion $($rb.LastWriteTime) y esta vacia" '' @(
-                    'Ultimo cambio en C:\`$Recycle.Bin: $($rb.LastWriteTime)',
+                    "Ultimo cambio en C:\`$Recycle.Bin: $($rb.LastWriteTime)",
                     "Contenido actual: $cnt elementos",
                     "Vaciamiento dentro de las ultimas 2 horas del escaneo"
                 ); $hits++
@@ -587,7 +590,7 @@ function Invoke-Ev6 {
                             Add-Ev 'RENOMBRADO' $_.Name "Pack de $sub que contiene clases Java" $_.FullName (@(
                                 "Clases detectadas: $($cls[0].FullName)$(if ($cls.Count -gt 1) { " (+$($cls.Count - 1) mas)" })",
                                 "Un $sub legitimo no lleva bytecode: es un mod disfrazado"
-                            ) + (Get-EvFileFacts $_))
+                            ) + [string[]](Get-EvFileFacts $_))
                         }
                     } finally { $z.Dispose() }
                 } catch { }
@@ -637,7 +640,7 @@ function Invoke-Ev7 {
             Invoke-UiPump
             $k = Test-CompiledScript $f.FullName
             if ($k) {
-                Add-Ev 'CRITICO' $f.Name "Script compilado en .exe: $k" $f.FullName ((Get-EvFileFacts $f) + @(
+                Add-Ev 'CRITICO' $f.Name "Script compilado en .exe: $k" $f.FullName (Get-EvFileFacts $f + @(
                     "Motor detectado en el binario: $k",
                     "Firmas AHK/AU3 encontradas dentro del ejecutable"
                 )); $hits++
@@ -760,3 +763,4 @@ function Invoke-EvasionOption {
         Set-Progress 100
         Set-Status "Anti-evasion completado. ($($script:EvFindings.Count) hallazgos con detalle expandible)"
     } finally { Stop-ScanSession }
+}
