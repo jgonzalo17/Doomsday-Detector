@@ -1,5 +1,4 @@
 #Requires -Version 5.1
-
 # ============================================================
 # EL SOMBRIO IF - FORENSIC SCANNER (MASTER V79 UNIFICADO) - EDICIÓN APP (GUI)
 #   V79 UNIFICADO - Novedades:
@@ -27,6 +26,7 @@
 #     Detección de MACROS mejorada: procesos, software instalado
 #          (registro), tareas programadas, servicios, archivos en
 #          carpetas del usuario y carpeta de Inicio.
+#   NUEVO: Opción 13 - Anti-Bypass Forense (Procesos, Hashes, Defender, Firmas)
 # ============================================================
 
 $script:AutoElevate     = $true   # $true = pedir permisos de Administrador (UAC) al abrir
@@ -144,6 +144,7 @@ $script:LogServicios = [System.Collections.Generic.List[string]]::new()
 $script:LogDisco     = [System.Collections.Generic.List[string]]::new()
 $script:LogPapelera  = [System.Collections.Generic.List[string]]::new()
 $script:LogHistorial = [System.Collections.Generic.List[string]]::new()
+$script:LogAntiBypass = [System.Collections.Generic.List[string]]::new()
 
 function Add-ToLog([System.Collections.Generic.List[string]]$LogList, [array]$Items) {
     if ($null -ne $Items) {
@@ -541,8 +542,8 @@ function Test-Administrator {
 
 function Get-ItemColor {
     param([string]$Text)
-    if ($Text -match 'ILEGAL|MALICIOSO|AUTOCLICK|AUTOCICK|HACK\b|PELIGRO|CRITICO|MACRO|RENOMBRADO|EXTENSIÓN FALSA|ADS SOSPECHOSO|VENTANA CHEAT|AUTOARRANQUE|SPOOF|ELIMINADO SOSPECHOSO') { return "Red" }
-    if ($Text -match 'SOSPECHOSO') { return "Yellow" }
+    if ($Text -match 'ILEGAL|MALICIOSO|AUTOCLICK|AUTOCICK|HACK\b|PELIGRO|CRITICO|CRÍTICO|MACRO|RENOMBRADO|EXTENSIÓN FALSA|ADS SOSPECHOSO|VENTANA CHEAT|AUTOARRANQUE|SPOOF|ELIMINADO SOSPECHOSO') { return "Red" }
+    if ($Text -match 'SOSPECHOSO|ALERTA') { return "Yellow" }
     if ($script:RxJavaNames.IsMatch($Text) -or $Text -match '\[JAVA\]') { return "Green" }
     if ($Text -match 'APROBADO|NORMAL|RUNNING|\bOK\b|\[MOD') { return "Green" }
     if ($Text -match '======') { return "DarkCyan" }
@@ -812,6 +813,7 @@ function Stop-ScanSession {
 # ============================================================
 $script:CatDefs = @(
     @{ Key = "Stats";      Text = "ESTADÍSTICAS" },
+    @{ Key = "AntiBypass"; Text = "ANTI-BYPASS" },
     @{ Key = "Memoria";    Text = "MEMORIA" },
     @{ Key = "Prefetch";   Text = "PREFETCH" },
     @{ Key = "Papelera";   Text = "PAPELERA" },
@@ -949,4 +951,326 @@ function Show-Results {
     Clear-Filter
     if ($script:FilterBar) { $script:FilterBar.Visible = $true }
     $script:LblView.Text  = if ($script:ViewMode -eq 'registry') { "REGISTRO DE ANÁLISIS  ·  MEMORIA ACUMULADA DE SESIÓN" } else { "PANEL DE RESULTADOS" }
-    Sh... (Tiempo restante: 85 KB)
+    Show-Category $script:ActiveCat
+}
+
+function Publish-Results {
+    param([hashtable]$Data, [string]$Focus)
+    foreach ($k in $Data.Keys) { $script:CatData[$k] = @($Data[$k]) }
+    $script:ViewMode  = 'live'
+    $script:ActiveCat = $Focus
+    Show-Results
+}
+
+# ============================================================
+# REPORTE FORENSE (Escritorio)
+# ============================================================
+function Save-Report {
+    param($Sections)
+    $path = Join-Path ([Environment]::GetFolderPath("Desktop")) "Reporte_Sombrio_V79.txt"
+    $sb = [System.Text.StringBuilder]::new()
+    [void]$sb.AppendLine("===============================================================")
+    [void]$sb.AppendLine(" REPORTE FORENSE - EL SOMBRIO IF V79")
+    [void]$sb.AppendLine((" Fecha: {0}  |  Equipo: {1}  |  Usuario: {2}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $env:COMPUTERNAME, $env:USERNAME))
+    [void]$sb.AppendLine("===============================================================")
+    foreach ($title in $Sections.Keys) {
+        [void]$sb.AppendLine("")
+        [void]$sb.AppendLine("--- $title ---")
+        $items = @($Sections[$title])
+        if ($items.Count -eq 0) { [void]$sb.AppendLine("  (sin hallazgos)") }
+        else { foreach ($it in $items) { [void]$sb.AppendLine("  $it") } }
+    }
+    [System.IO.File]::WriteAllText($path, $sb.ToString(), [System.Text.UTF8Encoding]::new($true))
+    return $path
+}
+
+# ============================================================
+# MÓDULOS DE ESCANEO
+# ============================================================
+function Invoke-DiskScan {
+    param($Disco, $Maliciosos, $Mods = $null, [datetime]$StartTime, [int]$BasePct, [int]$SpanPct)
+
+    $script:DiskModCount = 0
+
+    $targetExt = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]@('.jar','.zip','.exe','.dll','.ahk','.au3','.msi','.bat','.cmd','.ps1','.vbs','.scr','.hta','.com'),
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    $sysDrive = ($env:SystemDrive + "\")
+    $drives = [System.IO.DriveInfo]::GetDrives() | Where-Object { $_.IsReady -and $_.DriveType -eq 'Fixed' }
+
+    $dirsToScan = @()
+    $expectedBytes = 0L
+    foreach ($drive in $drives) {
+        $used = $drive.TotalSize - $drive.AvailableFreeSpace
+        if ($drive.Name -eq $sysDrive) {
+            $dirsToScan += "$env:USERPROFILE"
+            if (Test-Path "${sysDrive}ProgramData") { $dirsToScan += "${sysDrive}ProgramData" }
+            $expectedBytes += [math]::Min($used, 20000000000)   # estimación para el disco del sistema
+        } else {
+            $dirsToScan += $drive.RootDirectory.FullName
+            $expectedBytes += $used
+        }
+    }
+    if ($expectedBytes -lt 1000000000) { $expectedBytes = 1000000000 }
+
+    $scannedBytes = 0L
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $lastMs = 0L
+
+    foreach ($root in $dirsToScan) {
+        if ($script:CancelRequested) { break }
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+
+        $stack = [System.Collections.Generic.Stack[string]]::new()
+        $stack.Push($root)
+
+        while ($stack.Count -gt 0) {
+            if ($script:CancelRequested) { break }
+            $cur = $stack.Pop()
+            $di  = [System.IO.DirectoryInfo]::new($cur)
+
+            try {
+                foreach ($sd in $di.GetDirectories()) {
+                    if (-not ($sd.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) { $stack.Push($sd.FullName) }
+                }
+            } catch { }
+
+            $files = $null
+            try { $files = $di.GetFiles() } catch { continue }
+
+            foreach ($f in $files) {
+                $script:ScanCount++
+                $scannedBytes += $f.Length
+
+                if (($script:ScanCount % 60) -eq 0 -and ($sw.ElapsedMilliseconds - $lastMs) -gt 100) {
+                    $diskPct = [math]::Min(99, [math]::Round(($scannedBytes / $expectedBytes) * 100))
+                    $overall = $BasePct + [math]::Round($diskPct * $SpanPct / 100)
+                    Update-ScanMonitor -Scanned $script:ScanCount -Hits $script:DeepHits `
+                        -CurrentFile $f.FullName -StartTime $StartTime -Percent $overall
+                    $lastMs = $sw.ElapsedMilliseconds
+                    if ($script:CancelRequested) { break }
+                }
+
+                if (-not $targetExt.Contains($f.Extension)) { continue }
+                $full = $f.FullName
+                if ($script:RxPathWhitelist.IsMatch($full)) { continue }
+                # V76 - Extensión falsa por cabecera (MZ/PK camuflado)
+                $magicHit = Test-MagicMismatch -Path $full -Extension $f.Extension
+                if ($magicHit) {
+                    $script:DeepHits++
+                    $Disco.Add("[EXTENSIÓN FALSA] $($f.Name) | Ruta: $full | Motivo: $magicHit")
+                    $Maliciosos.Add("[EXTENSIÓN FALSA] $($f.Name) | Ruta: $full | Motivo: $magicHit")
+                }
+                # V76 - Metadatos PE internos (ejecutables renombrados)
+                if ($f.Extension -in '.exe','.dll','.sys','.scr','.com') {
+                    $peHit = Test-PeSuspicious -Path $full
+                    if ($peHit) {
+                        $script:DeepHits++
+                        $Disco.Add("[ARCHIVO RENOMBRADO] $($f.Name) | Ruta: $full | Nombre interno: $peHit")
+                        $Maliciosos.Add("[ARCHIVO RENOMBRADO] $($f.Name) | Ruta: $full | Nombre interno: $peHit")
+                    }
+                }
+                # .jar de cualquier carpeta del disco = posible mod (la carpeta .minecraft\mods se audita aparte)
+                $isJar = ($null -ne $Mods -and $f.Extension -eq '.jar' -and -not $full.StartsWith($script:DefaultModsPath, [StringComparison]::OrdinalIgnoreCase))
+                if ($isJar) { $script:DiskModCount++ }
+                # V76 - Contenido interno de .jar/.zip renombrados
+                if ($f.Extension -in '.jar','.zip') {
+                    $jarHit = Test-JarContentSuspicious -Path $full
+                    if ($jarHit) {
+                        $script:DeepHits++
+                        if ($isJar) {
+                            $Mods.Add("[MOD ILEGAL RENOMBRADO] $($f.Name) | Ruta: $full | Contenido: $jarHit")
+                            $Maliciosos.Add("[MOD ILEGAL RENOMBRADO] $($f.Name) | Ruta: $full | Contenido: $jarHit")
+                        } else {
+                            $Disco.Add("[ARCHIVO RENOMBRADO] $($f.Name) | Ruta: $full | Contenido: $jarHit")
+                            $Maliciosos.Add("[ARCHIVO RENOMBRADO] $($f.Name) | Ruta: $full | Contenido: $jarHit")
+                        }
+                    }
+                }
+                $hit  = ($script:RxHacks.IsMatch($f.Name) -or $script:RxMacroCritical.IsMatch($f.Name))
+                $tiny = ($isJar -and $f.Length -lt 15KB -and $full -match 'mods|minecraft')
+                if ($hit -or $tiny) {
+                    $script:DeepHits++
+                    # V76 - Alternate Data Streams ocultos (macros escondidas)
+                    foreach ($ads in @(Get-SuspiciousAds -Path $full)) {
+                        $Disco.Add("[ADS SOSPECHOSO] $($f.Name) | Ruta: $full | Stream: $ads")
+                        $Maliciosos.Add("[ADS SOSPECHOSO] $($f.Name) | Ruta: $full | Stream: $ads")
+                    }
+                    if ($hit) { $Disco.Add("[ARCHIVO ILEGAL] $($f.Name) | Ruta: $full") }
+                    if ($isJar) {
+                        if ($hit) {
+                            $Mods.Add("[MOD ILEGAL] $($f.Name) | Ruta: $full")
+                            $Maliciosos.Add("[MOD ILEGAL] $($f.Name) | Ruta: $full")
+                        } else {
+                            $Mods.Add("[MOD SOSPECHOSO] $($f.Name) | Ruta: $full | Motivo: tamaño anómalo ($([math]::Round($f.Length/1KB,1)) KB)")
+                            $Maliciosos.Add("[MOD SOSPECHOSO] $($f.Name) | Ruta: $full | Motivo: tamaño anómalo")
+                        }
+                    } else {
+                        $Maliciosos.Add("[EN DISCO] $($f.Name) | Ruta: $full")
+                    }
+                } elseif ($isJar) {
+                    $Mods.Add("[MOD APROBADO] $($f.Name) | Ruta: $full")
+                }
+            }
+        }
+    }
+    Update-ScanMonitor -Scanned $script:ScanCount -Hits $script:DeepHits -CurrentFile "COMPLETADO" -StartTime $StartTime -Percent 100
+}
+
+function Start-GlobalScan {
+    Start-ScanSession "Iniciando auditoría global..." -ShowPanel
+    try {
+        $memoria     = [System.Collections.Generic.List[string]]::new()
+        $prefetchHoy = [System.Collections.Generic.List[string]]::new()
+        $maliciosos  = [System.Collections.Generic.List[string]]::new()
+        $mods        = [System.Collections.Generic.List[string]]::new()
+        $macros      = [System.Collections.Generic.List[string]]::new()
+        $servicios   = [System.Collections.Generic.List[string]]::new()
+        $disco       = [System.Collections.Generic.List[string]]::new()
+        $statsBox    = [System.Collections.Generic.List[string]]::new()
+
+        $script:ScanCount = 0
+        $script:DeepHits  = 0
+        $script:JarVersionProbes = 0
+        $script:ContentProbes   = 0
+        $papeleraData = [System.Collections.Generic.List[string]]::new()
+        $script:RecycleMeta = @{}
+        $scanStart = Get-Date
+        $cRam = 0; $cPref = 0; $cPap = 0; $cMods = 0; $cSvc = 3
+
+        # 1 - Memoria
+        if (-not $script:CancelRequested) {
+            try {
+                Set-Phase 1 7 "1/7  Analizando Memoria RAM..."
+                $allProcs = Get-Process -ErrorAction SilentlyContinue
+                $cRam = @($allProcs).Count
+                foreach ($proc in ($allProcs | Where-Object { $script:RxMcProcess.IsMatch($_.Name) })) {
+                    $memoria.Add("[JAVA] INSTANCIA ACTIVA : $($proc.Name).exe | Ruta: Memoria (PID: $($proc.Id))")
+                }
+                foreach ($proc in ($allProcs | Where-Object { $script:RxMacroCritical.IsMatch($_.Name) })) {
+                    $memoria.Add("[PROCESO MACRO MALICIOSO] $($proc.Name).exe | Ruta: Memoria (PID: $($proc.Id))")
+                    $maliciosos.Add("[EN MEMORIA] $($proc.Name).exe | PID: $($proc.Id)")
+                }
+                # V76 - Procesos cuyo archivo fue renombrado (metadatos PE internos)
+                foreach ($proc in ($allProcs | Where-Object { $_.Path -and -not $script:RxPathWhitelist.IsMatch($_.Path) })) {
+                    $viProc = Test-PeSuspicious -Path $proc.Path
+                    if ($viProc) {
+                        $memoria.Add("[PROCESO RENOMBRADO] $($proc.Name).exe | Nombre interno: $viProc | Ruta: $($proc.Path)")
+                        $maliciosos.Add("[PROCESO RENOMBRADO] $($proc.Name).exe | Nombre interno: $viProc")
+                    }
+                }
+                # V76 - Ventanas activas del escritorio con títulos de cheats/clients
+                foreach ($wt in @(Find-CheatWindows)) {
+                    if (-not $memoria.Contains("[VENTANA CHEAT] $wt")) {
+                        $memoria.Add("[VENTANA CHEAT] $wt | Ruta: Ventana activa en el escritorio")
+                        $maliciosos.Add("[VENTANA CHEAT] $wt")
+                    }
+                }
+                Add-ToLog $script:LogMemoria $memoria
+            } catch { }
+        }
+
+        # 2 - Prefetch
+        if (-not $script:CancelRequested) {
+            try {
+                Set-Phase 2 7 "2/7  Extrayendo Prefetch..."
+                $hoy = (Get-Date).Date
+                $pfFiles = @(Get-ChildItem -Path "C:\Windows\Prefetch" -Filter "*.pf" -ErrorAction SilentlyContinue)
+                $cPref = $pfFiles.Count
+                foreach ($item in ($pfFiles | Where-Object { $_.LastWriteTime.Date -ge $hoy } | Sort-Object LastWriteTime -Descending)) {
+                    if ($script:RxHacks.IsMatch($item.Name)) {
+                        $prefetchHoy.Add("[PREFETCH MALICIOSO] $($item.Name) | Hora: $($item.LastWriteTime)")
+                        $maliciosos.Add("[PREFETCH HACK] $($item.Name) | Hora: $($item.LastWriteTime)")
+                    } else {
+                        $prefetchHoy.Add("[PREFETCH] $($item.Name) | Hora: $($item.LastWriteTime)")
+                    }
+                }
+                Add-ToLog $script:LogPrefetch $prefetchHoy
+            } catch { }
+        }
+
+        # 3 - Papelera
+        if (-not $script:CancelRequested) {
+            try {
+                Set-Phase 3 7 "3/7  Analizando Papelera de Reciclaje..."
+                $shell    = New-Object -ComObject Shell.Application
+                $papelera = $shell.NameSpace(10)
+
+                if ($papelera) {
+                    $cPap = $papelera.Items().Count
+
+                    foreach ($item in $papelera.Items()) {
+                        $name = [string]$item.Name
+                        $originalPath = ""
+                        $deletedAt = $null
+                        $recyclePath = [string]$item.Path
+
+                        try { $originalPath = [string]$item.ExtendedProperty("System.Recycle.ItemPathDisplay") } catch { }
+                        try { $deletedAt = $item.ExtendedProperty("System.Recycle.DateDeleted") } catch { }
+
+                        if ([string]::IsNullOrWhiteSpace($originalPath)) {
+                            try { $originalPath = [string]$item.ExtendedProperty("System.ItemPathDisplay") } catch { }
+                        }
+
+                        $deletedText = if ($deletedAt -is [datetime]) {
+                            $deletedAt.ToString("yyyy-MM-dd HH:mm:ss")
+                        } elseif ($deletedAt) {
+                            [string]$deletedAt
+                        } else {
+                            "Fecha no disponible"
+                        }
+
+                        $entry = "[PAPELERA] $name | Ruta original: $originalPath | Eliminado: $deletedText | Papelera: $recyclePath"
+                        $papeleraData.Add($entry)
+                        $script:RecycleMeta[$entry] = [pscustomobject]@{
+                            Name = $name
+                            OriginalPath = $originalPath
+                            DeletedAt = $deletedText
+                            RecyclePath = $recyclePath
+                            Path = $recyclePath
+                        }
+
+                        if ($script:RxHacks.IsMatch($name)) {
+                            $maliciosos.Add("[PAPELERA HACK] $name | Ruta original: $originalPath | Eliminado: $deletedText")
+                        }
+                    }
+
+                    Add-ToLog $script:LogPapelera $papeleraData
+                }
+            } catch { }
+        }
+
+        # 4 - Mods
+        if (-not $script:CancelRequested) {
+            try {
+                Set-Phase 4 7 "4/7  Auditando .minecraft/mods (el resto de mods del disco se detecta en el paso 7)..."
+                if (Test-Path $script:DefaultModsPath) {
+                    $localMods = @(Get-ChildItem -Path $script:DefaultModsPath -Recurse -File -Include "*.jar","*.zip","*.dll" -ErrorAction SilentlyContinue)
+                    $cMods = $localMods.Count
+                    foreach ($mod in $localMods) {
+                        $innerMod = Test-JarContentSuspicious -Path $mod.FullName
+                        if ($innerMod) {
+                            $mods.Add("[MOD ILEGAL RENOMBRADO] $($mod.Name) | Ruta: $($mod.FullName) | Contenido: $innerMod")
+                            $maliciosos.Add("[MOD RENOMBRADO] $($mod.Name) | Ruta: $($mod.FullName) | Contenido: $innerMod")
+                        } elseif ($script:RxHacks.IsMatch($mod.Name)) {
+                            $mods.Add("[MOD ILEGAL] $($mod.Name) | Ruta: $($mod.FullName)")
+                            $maliciosos.Add("[MOD ILEGAL] $($mod.Name) | Ruta: $($mod.FullName)")
+                        } elseif ($mod.Length -lt 15KB) {
+                            $mods.Add("[MOD SOSPECHOSO] $($mod.Name) | Ruta: $($mod.FullName) | Motivo: tamaño anómalo ($([math]::Round($mod.Length/1KB,1)) KB)")
+                            $maliciosos.Add("[MOD SOSPECHOSO] $($mod.Name) | Ruta: $($mod.FullName) | Motivo: tamaño anómalo")
+                        } else {
+                            $mods.Add("[MOD APROBADO] $($mod.Name) | Ruta: $($mod.FullName)")
+                        }
+                    }
+                }
+            } catch { }
+        }
+
+        # 5 - Macros (V75: procesos + software instalado + startup)
+        if (-not $script:CancelRequested) {
+            try {
+                Set-Phase 5 7 "5/7  Verificando Macros, Autoclickers y software de periféricos..."
+                foreach ($proc in (Get-Process -ErrorAction SilentlyContinue | Where-Object { $script:RxMacroCritical.IsMatch($_.Name) })) {
+                    $macros.Add("[PROCESO MALICIOSO] $($proc.Name).exe | Ruta: Memoria (PID: $($proc.Id))")
+                    $maliciosos.Add("[EN MEMORIA] $($proc.Name).exe | PID: $($proc.Id)
