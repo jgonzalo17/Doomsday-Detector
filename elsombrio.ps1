@@ -2203,6 +2203,7 @@ function Invoke-NavAction([string]$Id) {
             'tools'       { if (-not $script:Busy) { Show-ToolsMenu } }
             'manual'      { Show-ManualChecks }
             'theme'       { Switch-Theme }
+            'prank'       { if (-not $script:Busy) { Show-PrankScreen } }
             'panic'       { Invoke-Panic }
             'exit'        { $script:Form.Close() }
         }
@@ -2215,6 +2216,585 @@ function Update-FilterView {
     if ($script:SuppressFilter) { return }
     if ($script:Grid -and $script:Grid.Visible -and $script:FilterBar -and $script:FilterBar.Visible) { Show-Category $script:ActiveCat }
 }
+
+# ============================================================
+# BROMA: HACKEO FALSO (100% inofensivo)
+#   - No escribe archivos, no envía datos, no toca el sistema.
+#   - Solo muestra una pantalla: alerta (3 s) > terminal falsa (15 s) > calavera (6 s).
+#   - Esc o clic en cualquier momento la cierra. Se cierra sola a los ~24 s.
+#   - Única conexión: consulta tu IP pública a api.ipify.org (solo para mostrarla).
+#
+# DÓNDE PEGARLO: justo ANTES de la línea
+#     # CONSTRUCCIÓN DE LA VENTANA
+# ============================================================
+
+$script:Pr = $null
+
+$script:RainSource = @'
+using System;
+using System.Drawing;
+public class SombrioRain : IDisposable {
+    int cols, rows, cw, ch;
+    double[] heads, speeds;
+    int[] lens;
+    char[][] chars;
+    Random rnd = new Random();
+    SolidBrush[] bright = new SolidBrush[10];
+    SolidBrush[] dim = new SolidBrush[10];
+    Font font;
+    const string Glyphs = "0123456789012345678901ABCDEF$#%@";
+    char G() { return Glyphs[rnd.Next(Glyphs.Length)]; }
+    void Reset(int i, bool initial) {
+        heads[i] = initial ? -rnd.NextDouble() * rows : -rnd.Next(1, 10);
+        speeds[i] = 0.25 + rnd.NextDouble() * 0.75;
+        lens[i] = 8 + rnd.Next(14);
+    }
+    public SombrioRain(int width, int height, int cellW, int cellH, float fontPx) {
+        cw = cellW; ch = cellH;
+        cols = width / cw + 1; rows = height / ch + 1;
+        heads = new double[cols]; speeds = new double[cols]; lens = new int[cols];
+        chars = new char[cols][];
+        for (int i = 0; i < cols; i++) {
+            chars[i] = new char[rows];
+            for (int r = 0; r < rows; r++) chars[i][r] = G();
+            Reset(i, true);
+        }
+        for (int k = 0; k < 10; k++) {
+            int gr = 30 + k * 21;
+            bright[k] = new SolidBrush(k == 9 ? Color.FromArgb(215, 255, 225) : Color.FromArgb(0, gr, 12));
+            dim[k]    = new SolidBrush(k == 9 ? Color.FromArgb(110, 160, 120) : Color.FromArgb(0, (int)(gr * 0.45), 6));
+        }
+        font = new Font("Consolas", fontPx, FontStyle.Bold, GraphicsUnit.Pixel);
+    }
+    public void Update() {
+        for (int i = 0; i < cols; i++) {
+            heads[i] += speeds[i];
+            if (heads[i] - lens[i] > rows) Reset(i, false);
+        }
+        for (int m = 0; m < cols; m++) chars[rnd.Next(cols)][rnd.Next(rows)] = G();
+    }
+    public void Draw(Graphics g, bool dimmed) {
+        SolidBrush[] br = dimmed ? dim : bright;
+        for (int i = 0; i < cols; i++) {
+            int head = (int)Math.Floor(heads[i]);
+            int len = lens[i];
+            for (int k = 0; k < len; k++) {
+                int r = head - k;
+                if (r < 0 || r >= rows) continue;
+                int idx = (k == 0) ? 9 : Math.Max(0, 8 - (int)((double)k / len * 9));
+                g.DrawString(chars[i][r].ToString(), font, br[idx], i * cw, r * ch);
+            }
+        }
+    }
+    public void Dispose() {
+        for (int k = 0; k < 10; k++) { bright[k].Dispose(); dim[k].Dispose(); }
+        font.Dispose();
+    }
+}
+'@
+
+# ------------------------------------------------------------
+# IPs (solo para mostrarlas en pantalla)
+# ------------------------------------------------------------
+function Get-PrankIps {
+    $local = "192.168.0.1"
+    try {
+        $ua = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+            Where-Object { $_.OperationalStatus -eq 'Up' -and $_.NetworkInterfaceType -ne 'Loopback' } |
+            ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
+            Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' } | Select-Object -First 1
+        if ($ua) { $local = $ua.Address.IPAddressToString }
+    } catch { }
+    $pub = $null
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $req = [System.Net.HttpWebRequest]::Create('https://api.ipify.org')
+        $req.Timeout = 2500
+        $req.UserAgent = 'Mozilla/5.0'
+        $resp = $req.GetResponse()
+        try {
+            $sr = New-Object System.IO.StreamReader($resp.GetResponseStream())
+            $pub = $sr.ReadToEnd().Trim()
+        } finally { $resp.Close() }
+        if ($pub -notmatch '^\d{1,3}(\.\d{1,3}){3}$') { $pub = $null }
+    } catch { $pub = $null }
+    return @{ Local = $local; Public = $pub }
+}
+
+# ------------------------------------------------------------
+# Calavera dibujada una sola vez en un Bitmap (nítida a cualquier resolución)
+# ------------------------------------------------------------
+function New-RoundRectPath([single]$x, [single]$y, [single]$w, [single]$h, [single]$r) {
+    $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $d = $r * 2
+    $p.AddArc($x, $y, $d, $d, 180, 90)
+    $p.AddArc($x + $w - $d, $y, $d, $d, 270, 90)
+    $p.AddArc($x + $w - $d, $y + $h - $d, $d, $d, 0, 90)
+    $p.AddArc($x, $y + $h - $d, $d, $d, 90, 90)
+    $p.CloseFigure()
+    return ,$p
+}
+
+function New-PrankSkullBitmap([int]$BoxH) {
+    $sc  = $BoxH / 180.0
+    $bw  = [int][math]::Ceiling(132 * $sc)
+    $bmp = New-Object System.Drawing.Bitmap($bw, $BoxH, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g   = [System.Drawing.Graphics]::FromImage($bmp)
+    $col = [System.Drawing.Color]
+    try {
+        $g.SmoothingMode = 'AntiAlias'
+        $g.ScaleTransform([single]$sc, [single]$sc)
+        $g.TranslateTransform(16, 10)
+
+        $boneC = $col::FromArgb(255, 226, 248, 232)
+        $bone  = New-Object System.Drawing.SolidBrush($boneC)
+        $blk   = New-Object System.Drawing.SolidBrush($col::FromArgb(255, 4, 8, 6))
+
+        $cran = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $cran.AddEllipse(10, 4, 80, 76)
+        $jaw  = New-RoundRectPath 27 68 46 34 9
+        $bones = @(@(4, 108, 96, 150), @(96, 108, 4, 150))
+
+        # Resplandor verde detrás de todo
+        foreach ($wd in 26, 18, 11, 6) {
+            $gp = New-Object System.Drawing.Pen($col::FromArgb(34, 0, 255, 110), [single]$wd)
+            $gp.LineJoin = 'Round'; $gp.StartCap = 'Round'; $gp.EndCap = 'Round'
+            foreach ($l in $bones) { $g.DrawLine($gp, [single]$l[0], [single]$l[1], [single]$l[2], [single]$l[3]) }
+            $g.DrawPath($gp, $cran)
+            $g.DrawPath($gp, $jaw)
+            $gp.Dispose()
+        }
+
+        # Huesos cruzados con extremos redondeados (dos nudillos por punta)
+        $bp = New-Object System.Drawing.Pen($boneC, [single]9)
+        $bp.StartCap = 'Round'; $bp.EndCap = 'Round'
+        foreach ($l in $bones) {
+            $g.DrawLine($bp, [single]$l[0], [single]$l[1], [single]$l[2], [single]$l[3])
+            $dx = $l[2] - $l[0]; $dy = $l[3] - $l[1]
+            $len = [math]::Sqrt($dx * $dx + $dy * $dy)
+            $px = -$dy / $len; $py = $dx / $len
+            foreach ($pt in @(@($l[0], $l[1]), @($l[2], $l[3]))) {
+                foreach ($sg in -1, 1) {
+                    $cx = $pt[0] + $px * 5 * $sg; $cy = $pt[1] + $py * 5 * $sg
+                    $g.FillEllipse($bone, [single]($cx - 6.5), [single]($cy - 6.5), [single]13, [single]13)
+                }
+            }
+        }
+        $bp.Dispose()
+
+        # Cráneo y mandíbula
+        $g.FillPath($bone, $cran)
+        $g.FillPath($bone, $jaw)
+        $edge = New-Object System.Drawing.Pen($col::FromArgb(170, 30, 80, 55), [single]1.2)
+        $g.DrawPath($edge, $cran); $g.DrawPath($edge, $jaw)
+        $edge.Dispose()
+
+        # Sombras de las sienes y pómulos para dar volumen
+        $sh = New-Object System.Drawing.SolidBrush($col::FromArgb(70, 110, 160, 130))
+        $g.FillEllipse($sh, 12, 28, 14, 32)
+        $g.FillEllipse($sh, 74, 28, 14, 32)
+        $g.FillEllipse($sh, 24, 62, 14, 12)
+        $g.FillEllipse($sh, 62, 62, 14, 12)
+        $sh.Dispose()
+
+        # Grieta
+        $crackPen = New-Object System.Drawing.Pen($col::FromArgb(200, 55, 85, 68), [single]1.4)
+        $crack = [System.Drawing.PointF[]]@(
+            [System.Drawing.PointF]::new(63, 5), [System.Drawing.PointF]::new(58, 15),
+            [System.Drawing.PointF]::new(66, 22), [System.Drawing.PointF]::new(60, 31),
+            [System.Drawing.PointF]::new(64, 36))
+        $g.DrawLines($crackPen, $crack)
+        $crackPen.Dispose()
+
+        # Cuencas de los ojos con brillo rojo
+        $g.FillEllipse($blk, 19, 36, 27, 29)
+        $g.FillEllipse($blk, 54, 36, 27, 29)
+        $glowEye = New-Object System.Drawing.SolidBrush($col::FromArgb(70, 255, 40, 50))
+        $pupil   = New-Object System.Drawing.SolidBrush($col::FromArgb(255, 255, 50, 60))
+        foreach ($ex in 32.5, 67.5) {
+            $g.FillEllipse($glowEye, [single]($ex - 8), [single]41, [single]16, [single]19)
+            $g.FillEllipse($pupil,   [single]($ex - 3), [single]46, [single]6,  [single]8)
+        }
+        $glowEye.Dispose(); $pupil.Dispose()
+
+        # Nariz
+        $nose = [System.Drawing.PointF[]]@(
+            [System.Drawing.PointF]::new(50, 60), [System.Drawing.PointF]::new(43, 77),
+            [System.Drawing.PointF]::new(47, 79), [System.Drawing.PointF]::new(50, 75),
+            [System.Drawing.PointF]::new(53, 79), [System.Drawing.PointF]::new(57, 77))
+        $g.FillPolygon($blk, $nose)
+
+        # Dientes (6 arriba, 6 abajo)
+        $g.FillRectangle($blk, 29, 81, 42, 19)
+        for ($i = 0; $i -lt 6; $i++) {
+            $tx = 30 + $i * 6.7
+            $g.FillRectangle($bone, [single]$tx, [single]82.5, [single]6.2, [single]8.5)
+            $g.FillRectangle($bone, [single]$tx, [single]91.5, [single]6.2, [single]7.5)
+        }
+
+        $bone.Dispose(); $blk.Dispose(); $cran.Dispose(); $jaw.Dispose()
+    } finally { $g.Dispose() }
+    return ,$bmp
+}
+
+# ------------------------------------------------------------
+# Ventanitas emergentes de susto (falsas, se cierran con un clic; Esc cierra todo)
+# ------------------------------------------------------------
+function New-PrankPopup($Pr, [string]$Title, [string]$Body, [bool]$WithBar) {
+    $col = [System.Drawing.Color]
+    $pw = [int]($Pr.W * 0.21); $ph = [int]($Pr.H * 0.17)
+    $pw = [math]::Max($pw, (Px 300)); $ph = [math]::Max($ph, (Px 130))
+    $x = $Pr.X0 + $Pr.Rnd.Next(10, [math]::Max(11, $Pr.W - $pw - 10))
+    $y = $Pr.Y0 + $Pr.Rnd.Next(10, [math]::Max(11, $Pr.H - $ph - 10))
+
+    $pf = New-Object System.Windows.Forms.Form
+    $pf.FormBorderStyle = 'None'
+    $pf.StartPosition = 'Manual'
+    $pf.Bounds = New-Object System.Drawing.Rectangle($x, $y, $pw, $ph)
+    $pf.BackColor = $col::FromArgb(255, 40, 50)
+    $pf.Padding = [System.Windows.Forms.Padding]::new(2)
+    $pf.ShowInTaskbar = $false
+    $pf.TopMost = $true
+    $pf.KeyPreview = $true
+
+    $inner = New-Object System.Windows.Forms.Panel
+    $inner.Dock = 'Fill'
+    $inner.BackColor = $col::FromArgb(4, 10, 6)
+
+    $bar = New-Object System.Windows.Forms.Panel
+    $bar.Dock = 'Bottom'
+    $bar.Height = (Px 12)
+    $bar.BackColor = $col::FromArgb(0, 60, 28)
+    $fill = New-Object System.Windows.Forms.Panel
+    $fill.Dock = 'Left'
+    $fill.Width = 0
+    $fill.BackColor = $col::FromArgb(0, 255, 110)
+    $bar.Controls.Add($fill)
+    $bar.Visible = $WithBar
+
+    $lb = New-Object System.Windows.Forms.Label
+    $lb.Dock = 'Fill'
+    $lb.Padding = [System.Windows.Forms.Padding]::new((Px 10), (Px 8), (Px 8), (Px 4))
+    $lb.ForeColor = $col::FromArgb(0, 255, 110)
+    $lb.Font = New-Object System.Drawing.Font('Consolas', [single]10.5, [System.Drawing.FontStyle]::Bold)
+    $lb.Text = $Body
+
+    $tt = New-Object System.Windows.Forms.Label
+    $tt.Dock = 'Top'
+    $tt.Height = (Px 26)
+    $tt.BackColor = $col::FromArgb(190, 20, 34)
+    $tt.ForeColor = $col::White
+    $tt.TextAlign = 'MiddleLeft'
+    $tt.Padding = [System.Windows.Forms.Padding]::new((Px 8), 0, 0, 0)
+    $tt.Font = New-Object System.Drawing.Font('Consolas', [single]10, [System.Drawing.FontStyle]::Bold)
+    $tt.Text = "!  $Title"
+
+    $inner.Controls.Add($lb)
+    $inner.Controls.Add($bar)
+    $inner.Controls.Add($tt)
+    $pf.Controls.Add($inner)
+
+    $closer = { param($s, $e) try { $s.FindForm().Close() } catch { } }
+    foreach ($c in @($pf, $inner, $lb, $tt, $bar, $fill)) { $c.Add_Click($closer) }
+    $pf.Add_KeyDown({ param($s, $e) if ($e.KeyCode -eq 'Escape') { try { $script:Pr.Form.Close() } catch { } } })
+
+    $pf.Show($Pr.Form)
+    return @{ Form = $pf; Fill = $fill; Max = ($pw - 4); Born = $Pr.Sw.ElapsedMilliseconds; Dur = (2500 + $Pr.Rnd.Next(0, 3500)); Bar = $WithBar }
+}
+
+function Close-PrankPopups($Pr) {
+    foreach ($pp in @($Pr.Popups)) { try { if (-not $pp.Form.IsDisposed) { $pp.Form.Close() } } catch { } }
+    $Pr.Popups = @()
+}
+
+# ------------------------------------------------------------
+# Pantalla de la broma (~52 s)
+#   0-4 s    alerta parpadeante
+#   4-24 s   terminal falsa + ventanitas cada ~2 s
+#   24-44 s  CAOS: temblor, destellos, cuenta atrás falsa, ventanitas cada ~0,6 s
+#   44-52 s  calavera + "JAJAJA CAÍSTE, CHAO"
+# ------------------------------------------------------------
+function Show-PrankScreen {
+    if ($script:Busy) { return }
+    if (-not ([System.Management.Automation.PSTypeName]'SombrioRain').Type) {
+        try { Add-Type -TypeDefinition $script:RainSource -ReferencedAssemblies 'System.Drawing' }
+        catch { Show-Info ("No se pudo preparar la animación:`n`n" + $_.Exception.Message) "BROMA"; return }
+    }
+
+    Set-Status "Preparando la broma..."
+    $ips   = Get-PrankIps
+    $ipTxt = if ($ips.Public) { $ips.Public } else { $ips.Local }
+
+    $scr = [System.Windows.Forms.Screen]::FromControl($script:Form).Bounds
+    $w = $scr.Width; $h = $scr.Height
+    $col = [System.Drawing.Color]
+    $px  = [System.Drawing.GraphicsUnit]::Pixel
+    $bold = [System.Drawing.FontStyle]::Bold
+
+    $lines = [System.Collections.Generic.List[object]]::new()
+    $lines.Add(@{ T = "> Iniciando conexión remota...";                     C = 'G' })
+    $lines.Add(@{ T = "> Equipo objetivo: $env:COMPUTERNAME  |  Usuario: $env:USERNAME"; C = 'G' })
+    $lines.Add(@{ T = "> Tu IP es: $ipTxt";                                 C = 'R' })
+    if ($ips.Public -and $ips.Local) { $lines.Add(@{ T = "> Red local: $($ips.Local)"; C = 'G' }) }
+    $lines.Add(@{ T = "> Escaneando puertos abiertos... [22] [80] [443] [3389]"; C = 'G' })
+    $lines.Add(@{ T = "> Saltando firewall... [OK]";                        C = 'G' })
+    $lines.Add(@{ T = "> Escalando privilegios a ADMINISTRADOR... [OK]";    C = 'Y' })
+    $lines.Add(@{ T = "> Descifrando contraseñas guardadas... [OK]";        C = 'G' })
+    $lines.Add(@{ T = "> Estamos robando tu información...";                C = 'R' })
+    $lines.Add(@{ T = "> Copiando fotos, documentos y chats...";            C = 'G' })
+    $lines.Add(@{ T = "> Activando cámara y micrófono... [OK]";             C = 'G' })
+    $lines.Add(@{ T = "> Instalando keylogger... [ACTIVO]";                 C = 'Y' })
+    $lines.Add(@{ T = "> Accediendo a tus cuentas bancarias...";            C = 'Y' })
+    $lines.Add(@{ T = "> Subiendo datos al servidor 666.13.37.1...";        C = 'G' })
+    $lines.Add(@{ T = "> Borrando huellas del sistema...";                  C = 'R' })
+    $lines.Add(@{ T = "> No apagues el equipo.";                            C = 'R' })
+    $total = 0; foreach ($l in $lines) { $total += $l.T.Length }
+
+    $popDefs = @(
+        @{ T = 'ACCESO REMOTO';      B = "Conexión establecida desde`n666.13.37.1`nTu IP: $ipTxt"; Bar = $false },
+        @{ T = 'CÁMARA ACTIVADA';    B = "● REC   Grabando cámara web...`nMicrófono: ACTIVO";       Bar = $false },
+        @{ T = 'CONTRASEÑAS';        B = "Copiando 1,284 contraseñas...";                            Bar = $true  },
+        @{ T = 'FOTOS Y VIDEOS';     B = "Subiendo 3,421 archivos...";                               Bar = $true  },
+        @{ T = 'FIREWALL';           B = "Firewall DESACTIVADO`nPuertos 22, 80, 443 abiertos";       Bar = $false },
+        @{ T = 'CUENTAS BANCARIAS';  B = "Extrayendo datos de acceso...";                            Bar = $true  },
+        @{ T = 'CHATS';              B = "Mensajes copiados: 18,902";                                Bar = $true  },
+        @{ T = 'ERROR 0xDEAD';       B = "Sistema comprometido.`nNo cierres esta ventana.";          Bar = $false },
+        @{ T = 'DISCO C:';           B = "Copiando disco C: al servidor remoto...";                  Bar = $true  },
+        @{ T = 'KEYLOGGER';          B = "Registrando teclas... [ACTIVO]`nÚltima: ********";         Bar = $false },
+        @{ T = 'SESIÓN ROBADA';      B = "Cookies de sesión copiadas: 212";                          Bar = $true  }
+    )
+
+    $f = New-Object System.Windows.Forms.Form
+    $f.FormBorderStyle = 'None'
+    $f.StartPosition = 'Manual'
+    $f.Bounds = $scr
+    $f.BackColor = $col::Black
+    $f.ShowInTaskbar = $false
+    $f.KeyPreview = $true
+    try { $f.GetType().GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($f, $true, $null) } catch { }
+
+    $center = New-Object System.Drawing.StringFormat
+    $center.Alignment = 'Center'; $center.LineAlignment = 'Center'
+
+    $skullH = [int]($h * 0.62)
+    $script:Pr = @{
+        Form  = $f
+        W = $w; H = $h; X0 = $scr.Left; Y0 = $scr.Top
+        Sw    = [System.Diagnostics.Stopwatch]::new()
+        Rain  = New-Object SombrioRain($w, $h, (Px 18), (Px 18), [single](Px 16))
+        Rnd   = New-Object System.Random
+        Lines = $lines
+        Total = $total
+        PopDefs = $popDefs
+        Popups = @()
+        LastPop = 0
+        Cleared = $false
+        Center = $center
+        Skull = New-PrankSkullBitmap $skullH
+        FBig  = New-Object System.Drawing.Font('Consolas', [single]($h / 11), $bold, $px)
+        FMid  = New-Object System.Drawing.Font('Consolas', [single]($h / 24), $bold, $px)
+        FTerm = New-Object System.Drawing.Font('Consolas', [single]($h / 38), $bold, $px)
+        FSmall = New-Object System.Drawing.Font('Consolas', [single]($h / 54), $bold, $px)
+        FEnd  = New-Object System.Drawing.Font('Consolas', [single]($h / 13), $bold, $px)
+        FCount = New-Object System.Drawing.Font('Consolas', [single]($h / 7), $bold, $px)
+        BrGreen = New-Object System.Drawing.SolidBrush($col::FromArgb(0, 255, 110))
+        BrDark  = New-Object System.Drawing.SolidBrush($col::FromArgb(0, 110, 50))
+        BrRed   = New-Object System.Drawing.SolidBrush($col::FromArgb(255, 60, 70))
+        BrYellow = New-Object System.Drawing.SolidBrush($col::FromArgb(255, 210, 70))
+        BrWhite = New-Object System.Drawing.SolidBrush($col::White)
+        BrFlash = New-Object System.Drawing.SolidBrush($col::FromArgb(70, 255, 0, 0))
+        BrFlashW = New-Object System.Drawing.SolidBrush($col::FromArgb(60, 255, 255, 255))
+        BrGlitch = New-Object System.Drawing.SolidBrush($col::FromArgb(90, 0, 255, 110))
+        BrGlitchR = New-Object System.Drawing.SolidBrush($col::FromArgb(90, 255, 30, 50))
+        BrVeil  = New-Object System.Drawing.SolidBrush($col::FromArgb(190, 0, 0, 0))
+        BrPanel = New-Object System.Drawing.SolidBrush($col::FromArgb(222, 0, 6, 2))
+        PenGreen = New-Object System.Drawing.Pen($col::FromArgb(0, 255, 110), [single]2)
+        PenRed   = New-Object System.Drawing.Pen($col::FromArgb(255, 40, 50), [single](Px 8))
+        Timer = New-Object System.Windows.Forms.Timer
+    }
+    $script:Pr.Timer.Interval = 45
+
+    $f.Add_KeyDown({ param($s, $e) if ($e.KeyCode -eq 'Escape') { $s.Close() } })
+    $f.Add_MouseDown({ param($s, $e) $s.Close() })
+    $f.Add_Shown({ $p = $script:Pr; if ($p) { $p.Sw.Start(); $p.Timer.Start(); try { [System.Media.SystemSounds]::Hand.Play() } catch { } } })
+    $f.Add_FormClosing({ $p = $script:Pr; if ($p) { $p.Timer.Stop(); Close-PrankPopups $p } })
+
+    $script:Pr.Timer.Add_Tick({
+        $p = $script:Pr
+        if ($null -eq $p) { return }
+        $t = $p.Sw.ElapsedMilliseconds
+        $p.Rain.Update()
+
+        # Ventanitas: poco a poco en la terminal, muchas en el caos
+        $p.Popups = @($p.Popups | Where-Object { -not $_.Form.IsDisposed })
+        if ($t -ge 8000 -and $t -lt 44000) {
+            $interval = if ($t -lt 24000) { 2200 } else { 650 }
+            if (($t - $p.LastPop) -ge $interval -and $p.Popups.Count -lt 14) {
+                $d = $p.PopDefs[$p.Rnd.Next($p.PopDefs.Count)]
+                try {
+                    $p.Popups += (New-PrankPopup $p $d.T $d.B $d.Bar)
+                    [System.Media.SystemSounds]::Exclamation.Play()
+                } catch { }
+                $p.LastPop = $t
+            }
+        }
+        # Al llegar a la calavera se limpian las ventanitas
+        if ($t -ge 44000 -and -not $p.Cleared) { Close-PrankPopups $p; $p.Cleared = $true }
+
+        # Barras de progreso de las ventanitas
+        foreach ($pp in $p.Popups) {
+            if ($pp.Bar -and -not $pp.Form.IsDisposed) {
+                $fr = [math]::Min(1.0, ($t - $pp.Born) / [double]$pp.Dur)
+                $pp.Fill.Width = [int]($pp.Max * $fr)
+            }
+        }
+
+        $p.Form.Invalidate()
+        if ($t -ge 52500) { $p.Form.Close() }
+    })
+
+    $f.Add_Paint({
+        param($s, $e)
+        try {
+            $p = $script:Pr
+            if ($null -eq $p) { return }
+            $g = $e.Graphics
+            $t = $p.Sw.ElapsedMilliseconds
+            $w = $p.W; $h = $p.H
+            $phase = if ($t -lt 4000) { 1 } elseif ($t -lt 24000) { 2 } elseif ($t -lt 44000) { 3 } else { 4 }
+            $g.Clear([System.Drawing.Color]::Black)
+            $g.SmoothingMode = 'AntiAlias'
+            $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
+
+            # En el caos toda la pantalla tiembla
+            if ($phase -eq 3) {
+                $j = (Px 7)
+                $g.TranslateTransform([single]($p.Rnd.Next(-$j, $j + 1)), [single]($p.Rnd.Next(-$j, $j + 1)))
+            }
+
+            $p.Rain.Draw($g, ($phase -eq 4))
+
+            if ($phase -eq 1) {
+                # ---- FASE 1: ALERTA ----
+                $on = ((([int][math]::Floor($t / 250)) % 2) -eq 0)
+                if ($on) { $g.FillRectangle($p.BrFlash, 0, 0, $w, $h) }
+                $g.DrawRectangle($p.PenRed, 4, 4, ($w - 8), ($h - 8))
+                $g.FillRectangle($p.BrVeil, 0, [single]($h * 0.34), $w, [single]($h * 0.32))
+                $r1 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.36), $w, [single]($h * 0.16))
+                $r2 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.52), $w, [single]($h * 0.10))
+                $brA = if ($on) { $p.BrRed } else { $p.BrWhite }
+                $g.DrawString([string]"¡ESTÁS SIENDO HACKEADO!", $p.FBig, $brA, $r1, $p.Center)
+                $g.DrawString([string]"ACCESO NO AUTORIZADO DETECTADO", $p.FMid, $p.BrRed, $r2, $p.Center)
+            }
+            elseif ($phase -eq 2) {
+                # ---- FASE 2: TERMINAL FALSA ----
+                $on = ((([int][math]::Floor($t / 350)) % 2) -eq 0)
+                $bx = [single]($w * 0.12); $by = [single]($h * 0.10)
+                $bw = [single]($w * 0.76); $bh = [single]($h * 0.80)
+                $g.FillRectangle($p.BrPanel, $bx, $by, $bw, $bh)
+                $g.DrawRectangle($p.PenGreen, $bx, $by, $bw, $bh)
+
+                $tb = if ($on) { $p.BrRed } else { $p.BrGreen }
+                $g.DrawString([string]"root@sombrio:~#  ACCESO REMOTO ACTIVO", $p.FSmall, $tb, [single]($bx + 20), [single]($by + 12))
+
+                $lineH = $p.FTerm.Height + 6
+                $y = $by + $p.FSmall.Height + 34
+                $n = [int][math]::Floor([math]::Min(1.0, ($t - 4000) / 17000.0) * $p.Total)
+                foreach ($ln in $p.Lines) {
+                    if ($n -le 0) { break }
+                    $take = [math]::Min($n, $ln.T.Length)
+                    $txt = $ln.T.Substring(0, $take)
+                    $n -= $take
+                    if ($take -lt $ln.T.Length -and $on) { $txt += '█' }
+                    $br = switch ($ln.C) { 'R' { $p.BrRed } 'Y' { $p.BrYellow } default { $p.BrGreen } }
+                    $g.DrawString([string]$txt, $p.FTerm, $br, [single]($bx + 24), [single]$y)
+                    $y += $lineH
+                }
+
+                $frac = [math]::Max(0.0, [math]::Min(1.0, ($t - 5000) / 18500.0))
+                $pct = [int][math]::Floor($frac * 100)
+                $barY = $by + $bh - (Px 78)
+                $g.DrawString([string]("TRANSFERENCIA DE DATOS  $pct%"), $p.FSmall, $p.BrGreen, [single]($bx + 24), [single]$barY)
+                $barW = $bw - 48
+                $g.DrawRectangle($p.PenGreen, [single]($bx + 24), [single]($barY + $p.FSmall.Height + 8), [single]$barW, [single](Px 24))
+                $g.FillRectangle($p.BrGreen, [single]($bx + 26), [single]($barY + $p.FSmall.Height + 10), [single](($barW - 4) * $frac), [single]((Px 24) - 4))
+            }
+            elseif ($phase -eq 3) {
+                # ---- FASE 3: CAOS ----
+                $tc = $t - 24000
+                $on = ((([int][math]::Floor($tc / 180)) % 2) -eq 0)
+                if ($on) { $g.FillRectangle($p.BrFlash, -20, -20, ($w + 40), ($h + 40)) }
+                if ($p.Rnd.Next(0, 9) -eq 0) { $g.FillRectangle($p.BrFlashW, -20, -20, ($w + 40), ($h + 40)) }
+                $g.DrawRectangle($p.PenRed, 4, 4, ($w - 8), ($h - 8))
+
+                # Barras de "glitch" horizontales al azar
+                for ($i = 0; $i -lt 4; $i++) {
+                    $gy = $p.Rnd.Next(0, $h); $gh = $p.Rnd.Next((Px 6), (Px 40))
+                    $gb = if (($i % 2) -eq 0) { $p.BrGlitch } else { $p.BrGlitchR }
+                    $g.FillRectangle($gb, 0, $gy, $w, $gh)
+                }
+
+                $g.FillRectangle($p.BrVeil, 0, [single]($h * 0.30), $w, [single]($h * 0.40))
+                $r1 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.31), $w, [single]($h * 0.12))
+                $r2 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.43), $w, [single]($h * 0.08))
+                $r3 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.50), $w, [single]($h * 0.19))
+                $brA = if ($on) { $p.BrRed } else { $p.BrWhite }
+                $g.DrawString([string]"ACCESO TOTAL CONCEDIDO", $p.FMid, $brA, $r1, $p.Center)
+                $g.DrawString([string]"ELIMINANDO TODOS TUS ARCHIVOS EN:", $p.FMid, $p.BrYellow, $r2, $p.Center)
+                $left = [int][math]::Ceiling((44000 - $t) / 1000.0)
+                $left = [math]::Max(0, [math]::Min(20, $left))
+                $g.DrawString([string]("{0:00}" -f $left), $p.FCount, $(if ($on) { $p.BrRed } else { $p.BrGreen }), $r3, $p.Center)
+            }
+            else {
+                # ---- FASE 4: CALAVERA FINAL ----
+                $tp = $t - 44000
+                $a = [single][math]::Min(1.0, $tp / 700.0)
+                $g.FillRectangle($p.BrVeil, 0, 0, $w, $h)
+
+                $bmp = $p.Skull
+                $dest = New-Object System.Drawing.Rectangle([int](($w - $bmp.Width) / 2), [int]($h * 0.02), $bmp.Width, $bmp.Height)
+                $cm = New-Object System.Drawing.Imaging.ColorMatrix
+                $cm.Matrix33 = $a
+                $ia = New-Object System.Drawing.Imaging.ImageAttributes
+                $ia.SetColorMatrix($cm)
+                $g.DrawImage($bmp, $dest, 0, 0, $bmp.Width, $bmp.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
+                $ia.Dispose()
+
+                if ($tp -gt 700) {
+                    $blink = ((([int][math]::Floor($tp / 350)) % 2) -eq 0)
+                    $r1 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.66), $w, [single]($h * 0.14))
+                    $r1s = New-Object System.Drawing.RectangleF(4, [single]($h * 0.66 + 4), $w, [single]($h * 0.14))
+                    $r2 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.81), $w, [single]($h * 0.07))
+                    $g.DrawString([string]"JAJAJA CAÍSTE, CHAO", $p.FEnd, $p.BrDark, $r1s, $p.Center)
+                    $g.DrawString([string]"JAJAJA CAÍSTE, CHAO", $p.FEnd, $(if ($blink) { $p.BrGreen } else { $p.BrWhite }), $r1, $p.Center)
+                    $g.DrawString([string]"(era una broma, tu PC está perfecta)", $p.FMid, $p.BrGreen, $r2, $p.Center)
+                }
+            }
+
+            $g.ResetTransform()
+            $g.DrawString([string]"Esc = salir", $p.FSmall, $p.BrDark, [single]12, [single]($h - $p.FSmall.Height - 10))
+        } catch { }
+    })
+
+    try {
+        [void]$f.ShowDialog($script:Form)
+    } finally {
+        $p = $script:Pr
+        $script:Pr = $null
+        try {
+            $p.Timer.Stop(); $p.Timer.Dispose()
+            Close-PrankPopups $p
+            $p.Rain.Dispose(); $p.Skull.Dispose(); $p.Center.Dispose()
+            foreach ($k in 'FBig', 'FMid', 'FTerm', 'FSmall', 'FEnd', 'FCount', 'BrGreen', 'BrDark', 'BrRed', 'BrYellow', 'BrWhite', 'BrFlash', 'BrFlashW', 'BrGlitch', 'BrGlitchR', 'BrVeil', 'BrPanel', 'PenGreen', 'PenRed') { $p[$k].Dispose() }
+        } catch { }
+        $f.Dispose()
+        Set-Status "Broma terminada. (Era solo una pantalla: no se tocó nada en tu PC.)"
+    }
+}
+
+# ============================================================
+# FIN DEL MÓDULO DE BROMA
+# ============================================================
 
 # ============================================================
 # CONSTRUCCIÓN DE LA VENTANA
@@ -2671,8 +3251,9 @@ Add-NavSection "REVISIÓN MANUAL"
 Add-NavButton 'manual'      "09   Revisión manual (Win+R)"
 Add-NavSection "SISTEMA"
 Add-NavButton 'theme'       "10   Cambiar tema  ($($script:ThemeName))"
-Add-NavButton 'panic'       "11   Cerrar ya (cancelar todo)" $script:C.Red
-Add-NavButton 'exit'        "12   Salir" $script:C.Muted
+Add-NavButton 'prank'       "11   hackeo" $script:C.Yellow
+Add-NavButton 'panic'       "12   Cerrar ya (cancelar todo)" $script:C.Red
+Add-NavButton 'exit'        "13   Salir" $script:C.Muted
 
 $navPanel.Controls.Add($navFlow)
 $navPanel.Controls.Add($navFooter)
