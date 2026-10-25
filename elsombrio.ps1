@@ -97,6 +97,23 @@ if (-not ([System.Management.Automation.PSTypeName]'Sombrio.WinApi').Type) {
     } catch { }
 }
 try { [void][Sombrio.WinApi]::SetProcessDPIAware() } catch { }
+if (-not ([System.Management.Automation.PSTypeName]'Sombrio.Dwm').Type) {
+    try {
+        Add-Type -Namespace Sombrio -Name Dwm -MemberDefinition '[DllImport("dwmapi.dll")] public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int val, int size);'
+    } catch { }
+}
+function Set-DarkTitleBar($Form) {
+    try {
+        $h = $Form.Handle
+        $on = 1
+        [void][Sombrio.Dwm]::DwmSetWindowAttribute($h, 20, [ref]$on, 4)
+        foreach ($pair in @(@(35, $script:C.Panel), @(34, $script:C.Border), @(36, $script:C.Text))) {
+            $c = $pair[1]
+            $bgr = [int]($c.R + 256 * $c.G + 65536 * $c.B)
+            [void][Sombrio.Dwm]::DwmSetWindowAttribute($h, [int]$pair[0], [ref]$bgr, 4)
+        }
+    } catch { }
+}
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
 # Si se ejecuta en esta misma consola (irm | iex siendo administrador), se oculta mientras la app está abierta.
@@ -125,9 +142,10 @@ $script:CatData         = @{}
 $script:RegData         = @{}
 $script:RecycleMeta     = @{}
 $script:CatButtons      = @{}
+$script:NavActive       = ''
 $script:NavButtons      = [System.Collections.Generic.List[object]]::new()
-$script:JarVersionProbes = 0           # límite de aperturas de .jar para detectar versión
-$script:ContentProbes   = 0           # V76 - límite de lecturas de contenido/metadatos
+$script:JarVersionProbes = 0           # límite de aperturas de .jar para detectar versión (optimizado: 300)
+$script:ContentProbes   = 0           # V76 - límite de lecturas de contenido/metadatos (optimizado: 300)
 $script:FilterText      = ""          # buscador de la tabla de resultados
 $script:FilterLevel     = 'all'       # all | red | warn
 $script:SuppressFilter  = $false
@@ -145,6 +163,9 @@ $script:LogDisco     = [System.Collections.Generic.List[string]]::new()
 $script:LogPapelera  = [System.Collections.Generic.List[string]]::new()
 $script:LogHistorial = [System.Collections.Generic.List[string]]::new()
 $script:LogAntiBypass = [System.Collections.Generic.List[string]]::new()
+$script:LogScreenshots = [System.Collections.Generic.List[string]]::new()
+$script:LogBrowser     = [System.Collections.Generic.List[string]]::new()
+$script:LogMcLogs      = [System.Collections.Generic.List[string]]::new()
 
 function Add-ToLog([System.Collections.Generic.List[string]]$LogList, [array]$Items) {
     if ($null -ne $Items) {
@@ -180,9 +201,41 @@ $script:Themes = @{
         Red = (New-Rgb 255 70 84);  RedDark = (New-Rgb 150 30 40);  Green = (New-Rgb 80 255 140)
         Yellow = (New-Rgb 255 200 90);  TealDim = (New-Rgb 140 200 170)
     }
+    Noche = @{
+        Bg = (New-Rgb 12 13 17);  Panel = (New-Rgb 18 19 25);  Panel2 = (New-Rgb 26 28 36);  Row2 = (New-Rgb 21 22 29)
+        Border = (New-Rgb 40 43 54);  Hover = (New-Rgb 32 35 45);  Select = (New-Rgb 36 41 56)
+        Accent = (New-Rgb 104 124 168);  Pink = (New-Rgb 122 100 156);  Blue = (New-Rgb 90 140 124);  DBlue = (New-Rgb 60 105 90)
+        Text = (New-Rgb 208 213 224);  Muted = (New-Rgb 122 128 144)
+        Red = (New-Rgb 198 86 94);  RedDark = (New-Rgb 110 50 56);  Green = (New-Rgb 94 160 114)
+        Yellow = (New-Rgb 192 162 94);  TealDim = (New-Rgb 98 142 142)
+    }
+    Neon = @{
+        Bg = (New-Rgb 7 9 18);  Panel = (New-Rgb 11 15 28);  Panel2 = (New-Rgb 17 23 42);  Row2 = (New-Rgb 13 18 34)
+        Border = (New-Rgb 28 42 74);  Hover = (New-Rgb 20 34 64);  Select = (New-Rgb 16 48 84)
+        Accent = (New-Rgb 0 224 255);  Pink = (New-Rgb 168 85 247);  Blue = (New-Rgb 52 255 170);  DBlue = (New-Rgb 20 180 120)
+        Text = (New-Rgb 225 238 255);  Muted = (New-Rgb 118 140 175)
+        Red = (New-Rgb 255 64 110);  RedDark = (New-Rgb 150 30 60);  Green = (New-Rgb 46 255 150)
+        Yellow = (New-Rgb 255 205 70);  TealDim = (New-Rgb 90 190 200)
+    }
+    Pro = @{
+        Bg = (New-Rgb 15 17 21);  Panel = (New-Rgb 21 24 30);  Panel2 = (New-Rgb 30 34 42);  Row2 = (New-Rgb 25 28 35)
+        Border = (New-Rgb 44 50 61);  Hover = (New-Rgb 38 44 55);  Select = (New-Rgb 34 50 80)
+        Accent = (New-Rgb 79 140 255);  Pink = (New-Rgb 96 112 140);  Blue = (New-Rgb 52 211 153);  DBlue = (New-Rgb 16 150 110)
+        Text = (New-Rgb 230 234 241);  Muted = (New-Rgb 138 148 163)
+        Red = (New-Rgb 248 81 73);  RedDark = (New-Rgb 140 40 40);  Green = (New-Rgb 63 185 80)
+        Yellow = (New-Rgb 227 179 65);  TealDim = (New-Rgb 110 160 160)
+    }
+    Ocean = @{
+        Bg = (New-Rgb 6 12 24);  Panel = (New-Rgb 10 20 38);  Panel2 = (New-Rgb 16 32 56);  Row2 = (New-Rgb 12 24 44)
+        Border = (New-Rgb 30 80 140);  Hover = (New-Rgb 20 50 90);  Select = (New-Rgb 25 65 120)
+        Accent = (New-Rgb 0 200 255);  Pink = (New-Rgb 0 200 255);  Blue = (New-Rgb 0 255 200);  DBlue = (New-Rgb 0 180 160)
+        Text = (New-Rgb 220 240 255);  Muted = (New-Rgb 120 170 210)
+        Red = (New-Rgb 255 80 100);  RedDark = (New-Rgb 160 40 60);  Green = (New-Rgb 0 255 160)
+        Yellow = (New-Rgb 255 220 80);  TealDim = (New-Rgb 0 200 180)
+    }
 }
-$script:ThemeFile = Join-Path $env:APPDATA 'ElSombrio\theme.txt'
-$script:ThemeName = 'Slate'
+$script:ThemeFile = Join-Path $env:APPDATA 'ElSombrio\theme_v82.txt'
+$script:ThemeName = 'Noche'
 try {
     if (Test-Path -LiteralPath $script:ThemeFile) {
         $tn = (Get-Content -LiteralPath $script:ThemeFile -ErrorAction Stop | Select-Object -First 1).Trim()
@@ -313,7 +366,7 @@ $script:WindowsServices = @("dps", "appinfo", "pcasvc", "eventlog", "sysmain", "
 function Get-JarMcVersion {
     param([string]$Path, [string]$FileName)
     # 1) Metadatos dentro del .jar (lo más fiable: evita confundir la versión del mod con la de Minecraft)
-    if (-not [string]::IsNullOrWhiteSpace($Path) -and $script:JarVersionProbes -lt 600 -and (Test-Path -LiteralPath $Path)) {
+    if (-not [string]::IsNullOrWhiteSpace($Path) -and $script:JarVersionProbes -lt 300 -and (Test-Path -LiteralPath $Path)) {
         try {
             $len = (Get-Item -LiteralPath $Path -ErrorAction Stop).Length
             if ($len -lt 80MB) {
@@ -414,7 +467,7 @@ function Test-PeSuspicious {
 # las entradas (clases, carpetas) delatan el cheat.
 function Test-JarContentSuspicious {
     param([string]$Path)
-    if ($script:ContentProbes -ge 600) { return $null }
+    if ($script:ContentProbes -ge 300) { return $null }
     try {
         $len = (Get-Item -LiteralPath $Path -ErrorAction Stop).Length
         if ($len -gt 40MB) { return $null }
@@ -822,7 +875,10 @@ $script:CatDefs = @(
     @{ Key = "Macros";     Text = "MACROS" },
     @{ Key = "Servicios";  Text = "SERVICIOS" },
     @{ Key = "Disco";      Text = "DISCO PROFUNDO" },
-    @{ Key = "Historial";  Text = "HISTORIAL" }
+    @{ Key = "Historial";  Text = "HISTORIAL" },
+    @{ Key = "Screenshots"; Text = "CAPTURAS (SS)" },
+    @{ Key = "Browser";     Text = "NAVEGADOR" },
+    @{ Key = "McLogs";      Text = "LOGS MC" }
 )
 
 function Get-CatItems([string]$Key) {
@@ -1100,10 +1156,10 @@ function Initialize-UiEnhancements {
         $g.EnableHeadersVisualStyles = $false
         $g.ColumnHeadersBorderStyle  = 'Single'
         $g.ColumnHeadersHeightSizeMode = 'DisableResizing'
-        $g.ColumnHeadersHeight = (Px 34)
-        $g.RowTemplate.Height  = (Px 26)
+        $g.ColumnHeadersHeight = (Px 38)
+        $g.RowTemplate.Height  = (Px 32)
         $g.CellBorderStyle     = 'SingleHorizontal'
-        $g.GridColor           = $script:C.Border
+        $g.GridColor           = (Merge-Color $script:C.Border $script:C.Panel 0.5)
         $hs = $g.ColumnHeadersDefaultCellStyle
         $hs.BackColor          = $script:C.Panel2
         $hs.ForeColor          = $script:C.Muted
@@ -1407,7 +1463,9 @@ function Invoke-DiskScan {
             $di  = [System.IO.DirectoryInfo]::new($cur)
 
             try {
+                $skipDirs = @('WinSxS','node_modules','.git','\.vs','.nuget','Package Cache','WindowsApps')
                 foreach ($sd in $di.GetDirectories()) {
+                    if ($skipDirs | Where-Object { $sd.FullName -like "*$_*" }) { continue }
                     if (-not ($sd.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) { $stack.Push($sd.FullName) }
                 }
             } catch { }
@@ -1505,6 +1563,9 @@ function Start-GlobalScan {
         $servicios   = [System.Collections.Generic.List[string]]::new()
         $disco       = [System.Collections.Generic.List[string]]::new()
         $statsBox    = [System.Collections.Generic.List[string]]::new()
+        $screenshots = [System.Collections.Generic.List[string]]::new()
+        $browser     = [System.Collections.Generic.List[string]]::new()
+        $mcLogs      = [System.Collections.Generic.List[string]]::new()
 
         $script:ScanCount = 0
         $script:DeepHits  = 0
@@ -1640,6 +1701,140 @@ function Start-GlobalScan {
                         }
                     }
                 }
+            } catch { }
+        }
+
+        # 4b - Capturas SS estilo Ocean SS Tool
+        if (-not $script:CancelRequested) {
+            try {
+                Set-Phase 4 8 "4b/8  Analizando capturas de pantalla (Ocean SS)..."
+                $screenshots = [System.Collections.Generic.List[string]]::new()
+                # 1) Capturas en .minecraft/screenshots
+                foreach ($sd in @("$env:APPDATA\.minecraft\screenshots", "$env:USERPROFILE\.minecraft\screenshots")) {
+                    if (-not (Test-Path -LiteralPath $sd)) { continue }
+                    foreach ($f in @(Get-ChildItem -LiteralPath $sd -File -ErrorAction SilentlyContinue)) {
+                        $entry = "[SCREENSHOT] $($f.Name) | Ruta: $($f.FullName) | Fecha: $($f.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss')) | Tamaño: $([math]::Round($f.Length/1KB,1)) KB"
+                        if ($script:RxHacks.IsMatch($f.Name) -or $script:RxMacroCritical.IsMatch($f.Name)) {
+                            $entry = "[SCREENSHOT SOSPECHOSO] $($f.Name) | Ruta: $($f.FullName) | Fecha: $($f.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))"
+                            $maliciosos.Add("[SCREENSHOT SOSPECHOSO] $($f.Name) | Ruta: $($f.FullName)")
+                        }
+                        if ($f.Length -lt 5KB -or $f.Length -gt 25MB) {
+                            $screenshots.Add("[SCREENSHOT ANÓMALO] $($f.Name) | Tamaño: $([math]::Round($f.Length/1KB,1)) KB | Ruta: $($f.FullName)")
+                            $maliciosos.Add("[SCREENSHOT ANÓMALO] $($f.Name) | Ruta: $($f.FullName)")
+                        } else { $screenshots.Add($entry) }
+                    }
+                }
+                # 2) Ventanas activas de clients
+                foreach ($wt in @(Find-CheatWindows)) {
+                    $screenshots.Add("[VENTANA CHEAT ACTIVA] $wt | Detectado en captura")
+                    $maliciosos.Add("[VENTANA CHEAT ACTIVA] $wt")
+                }
+                # 3) Procesos de clients en memoria
+                foreach ($proc in (Get-Process -ErrorAction SilentlyContinue | Where-Object { $script:RxHacks.IsMatch($_.Name) -or $script:RxMacroCritical.IsMatch($_.Name) })) {
+                    $screenshots.Add("[PROCESO CLIENTE] $($proc.Name).exe | PID: $($proc.Id) | Ruta: $($proc.Path)")
+                    $maliciosos.Add("[PROCESO CLIENTE] $($proc.Name).exe | PID: $($proc.Id)")
+                }
+                # 4) Archivos recientes en .minecraft (24h)
+                $cutoff = (Get-Date).AddHours(-24)
+                foreach ($md in @("$env:APPDATA\.minecraft", "$env:USERPROFILE\.minecraft")) {
+                    if (-not (Test-Path -LiteralPath $md)) { continue }
+                    foreach ($f in @(Get-ChildItem -LiteralPath $md -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.LastWriteTime -ge $cutoff -and $_.Extension -in '.jar','.zip','.dll','.json','.txt','.cfg' })) {
+                        $screenshots.Add("[ARCHIVO RECIENTE] $($f.Name) | Ruta: $($f.FullName) | Modificado: $($f.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))")
+                    }
+                }
+                # 5) Portapapeles
+                try {
+                    $clip = [System.Windows.Forms.Clipboard]::GetText()
+                    if ($clip -and ($script:RxHacks.IsMatch($clip) -or $script:RxMacroCritical.IsMatch($clip))) {
+                        $screenshots.Add("[PORTAPAPELES SOSPECHOSO] $clip")
+                        $maliciosos.Add("[PORTAPAPELES SOSPECHOSO] $clip")
+                    }
+                } catch { }
+
+                # 6) Software de grabación de pantalla / overlays (Ocean SS los detecta)
+                $recorders = @("obs", "obs64", "obs32", "streamlabs", "xsplit", "bandicam", "fraps", "dxtory", "action", "shadowplay", "nvidia share", "medal", "replaymod")
+                foreach ($rn in $recorders) {
+                    $rp = Get-Process -Name $rn -ErrorAction SilentlyContinue
+                    if ($rp) {
+                        $screenshots.Add("[GRABADOR PANTALLA] $rn.exe | PID: $($rp.Id) | Puede usarse para ocultar cheats en SS")
+                        $maliciosos.Add("[GRABADOR PANTALLA] $rn.exe | PID: $($rp.Id)")
+                    }
+                }
+
+                # 7) Discord overlay / inyección
+                foreach ($dp in @("discord", "discordptb", "discordcanary")) {
+                    $dproc = Get-Process -Name $dp -ErrorAction SilentlyContinue
+                    if ($dproc) {
+                        $screenshots.Add("[DISCORD] $dp.exe | PID: $($dproc.Id) | Overlay activo (puede inyectar)")
+                    }
+                }
+
+                # 8) Resource packs sospechosos (Xray textures)
+                $rpDir = "$env:APPDATA\.minecraft\resourcepacks"
+                if (Test-Path -LiteralPath $rpDir) {
+                    foreach ($rp in @(Get-ChildItem -LiteralPath $rpDir -Directory -ErrorAction SilentlyContinue)) {
+                        if ($script:RxHacks.IsMatch($rp.Name)) {
+                            $screenshots.Add("[RESOURCE PACK SOSPECHOSO] $($rp.Name) | Ruta: $($rp.FullName)")
+                            $maliciosos.Add("[RESOURCE PACK SOSPECHOSO] $($rp.Name) | Ruta: $($rp.FullName)")
+                        }
+                    }
+                }
+
+                # 9) Litematica / esquemáticos (puede usarse para scaffold)
+                $litematica = "$env:APPDATA\.minecraft\schematics"
+                if (Test-Path -LiteralPath $litematica) {
+                    foreach ($sch in @(Get-ChildItem -LiteralPath $litematica -File -ErrorAction SilentlyContinue)) {
+                        $screenshots.Add("[ESQUEMÁTICO] $($sch.Name) | Ruta: $($sch.FullName) | Fecha: $($sch.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))")
+                    }
+                }
+
+                # 10) Múltiples instancias de Minecraft (multiclient)
+                $mcProcs = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'javaw?|lunarclient|minecraft' })
+                if ($mcProcs.Count -gt 1) {
+                    $screenshots.Add("[MULTICLIENT] $($mcProcs.Count) instancias de Minecraft detectadas")
+                    $maliciosos.Add("[MULTICLIENT] $($mcProcs.Count) instancias de Minecraft")
+                }
+                Add-ToLog $script:LogScreenshots $screenshots
+            } catch { }
+        }
+
+        # 4c - Extensiones de navegador sospechosas
+        if (-not $script:CancelRequested) {
+            try {
+                $browser = [System.Collections.Generic.List[string]]::new()
+                $extDirs = @(
+                    "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Extensions",
+                    "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\Extensions",
+                    "$env:APPDATA\Mozilla\Firefox\Profiles"
+                )
+                foreach ($ed in $extDirs) {
+                    if (-not (Test-Path -LiteralPath $ed)) { continue }
+                    foreach ($ext in @(Get-ChildItem -LiteralPath $ed -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'meteor|wurst|cheat|hack|xray' })) {
+                        $browser.Add("[EXTENSIÓN SOSPECHOSA] $($ext.Name) | Ruta: $($ext.FullName)")
+                        $maliciosos.Add("[EXTENSIÓN SOSPECHOSA] $($ext.Name) | Ruta: $($ext.FullName)")
+                    }
+                }
+                Add-ToLog $script:LogBrowser $browser
+            } catch { }
+        }
+
+        # 4d - Análisis de logs de Minecraft (comandos sospechosos)
+        if (-not $script:CancelRequested) {
+            try {
+                $mcLogs = [System.Collections.Generic.List[string]]::new()
+                $logDir = "$env:APPDATA\.minecraft\logs"
+                if (Test-Path -LiteralPath $logDir) {
+                    foreach ($lf in @(Get-ChildItem -LiteralPath $logDir -Filter '*.log' -File -ErrorAction SilentlyContinue)) {
+                        $content = Get-Content -LiteralPath $lf.FullName -Raw -ErrorAction SilentlyContinue
+                        if ($content -and ($script:RxHacks.IsMatch($content) -or $script:RxMacroCritical.IsMatch($content))) {
+                            $mcLogs.Add("[LOG SOSPECHOSO] $($lf.Name) | Ruta: $($lf.FullName)")
+                            $maliciosos.Add("[LOG SOSPECHOSO] $($lf.Name) | Ruta: $($lf.FullName)")
+                        } else {
+                            $mcLogs.Add("[LOG] $($lf.Name) | Ruta: $($lf.FullName) | Fecha: $($lf.LastWriteTime.ToString('yyyy-MM-dd HH:mm:ss'))")
+                        }
+                    }
+                }
+                Add-ToLog $script:LogMcLogs $mcLogs
             } catch { }
         }
 
@@ -1856,6 +2051,9 @@ function Start-GlobalScan {
             Servicios  = $servicios
             Disco      = $disco
             Historial  = $historial
+            Screenshots = $screenshots
+            Browser     = $browser
+            McLogs      = $mcLogs
         } -Focus $focus
 
         try {
@@ -1871,6 +2069,9 @@ function Start-GlobalScan {
                 'SERVICIOS'          = @($servicios)
                 'DISCO PROFUNDO'     = @($disco)
                 'HISTORIAL'          = @($historial)
+                'CAPTURAS (SS)'      = @($screenshots)
+                'NAVEGADOR'          = @($browser)
+                'LOGS MC'            = @($mcLogs)
             })
         } catch { }
 
@@ -2087,7 +2288,12 @@ function Get-ManualChecks {
         @{ Cmd = '...\PowerShell\PSReadLine';                                  Info = 'Historial de comandos de PowerShell';                   Kind = 'folder'; Target = "$env:APPDATA\Microsoft\Windows\PowerShell\PSReadLine" },
         @{ Cmd = 'msinfo32';                                                   Info = 'Información del sistema: Virtual Machine = BAN';        Kind = 'exe';    Target = 'msinfo32.exe' },
         @{ Cmd = 'C:\Windows\System32\drivers\etc';                            Info = 'Archivo hosts: dominios bloqueados';                    Kind = 'folder'; Target = "$env:SystemRoot\System32\drivers\etc" },
-        @{ Cmd = '%LOCALAPPDATA%\Microsoft\Windows\History';                   Info = 'Páginas y archivos ejecutados (historial)';             Kind = 'folder'; Target = "$la\Microsoft\Windows\History" }
+        @{ Cmd = '%LOCALAPPDATA%\Microsoft\Windows\History';                   Info = 'Páginas y archivos ejecutados (historial)';             Kind = 'folder'; Target = "$la\Microsoft\Windows\History" },
+        @{ Cmd = 'OCEAN SS - Capturas';                                       Info = 'Abrir carpeta de capturas de Minecraft para revisión manual'; Kind = 'folder'; Target = "$env:APPDATA\.minecraft\screenshots" },
+        @{ Cmd = 'OCEAN SS - Resource Packs';                                 Info = 'Revisar resource packs (posible Xray textures)';         Kind = 'folder'; Target = "$env:APPDATA\.minecraft\resourcepacks" },
+        @{ Cmd = 'OCEAN SS - Schematics';                                     Info = 'Revisar esquemáticos Litematica (scaffold)';            Kind = 'folder'; Target = "$env:APPDATA\.minecraft\schematics" },
+        @{ Cmd = 'OCEAN SS - Mods';                                           Info = 'Revisar mods manualmente';                              Kind = 'folder'; Target = "$env:APPDATA\.minecraft\mods" },
+        @{ Cmd = 'OCEAN SS - Config';                                         Info = 'Revisar configs de clients (Meteor, Wurst, etc.)';      Kind = 'folder'; Target = "$env:APPDATA\.minecraft\config" }
     )
 }
 
@@ -2168,14 +2374,24 @@ function Show-ManualChecks {
 }
 
 function Switch-Theme {
-    $new = if ($script:ThemeName -eq 'Slate') { 'Sombrio' } else { 'Slate' }
+    $order = @('Noche', 'Neon', 'Pro', 'Slate', 'Sombrio', 'Ocean')
+    $idx = [array]::IndexOf($order, $script:ThemeName)
+    $new = $order[($idx + 1) % $order.Count]
     try {
         $dir = Split-Path -Path $script:ThemeFile -Parent
         if (-not (Test-Path -LiteralPath $dir)) { [void](New-Item -ItemType Directory -Path $dir -Force) }
         Set-Content -LiteralPath $script:ThemeFile -Value $new -Encoding UTF8
-        Show-Info "Tema '$new' guardado.`n`nCierra y vuelve a abrir la aplicación para verlo aplicado." "TEMA"
+        Show-Info "Tema '$new' guardado.`n`nCierra y vuelve a abrir la aplicación para verlo aplicado.`n(Temas: Noche, Neon, Pro, Slate, Sombrio, Ocean)" "TEMA"
     } catch {
         Show-Info ("No se pudo guardar el tema:`n`n" + $_.Exception.Message) "TEMA"
+    }
+}
+
+function Set-NavActive([string]$Id) {
+    $script:NavActive = $Id
+    foreach ($b in $script:NavButtons) {
+        $b.BackColor = $script:C.Panel
+        $b.Invalidate()
     }
 }
 
@@ -2188,6 +2404,7 @@ function Invoke-Panic {
 
 function Invoke-NavAction([string]$Id) {
     try {
+        if ($Id -in @('global', 'live', 'registry', 'manual')) { Set-NavActive $Id }
         switch ($Id) {
             'global'      { if (-not $script:Busy) { Start-GlobalScan } }
             'live'        {
@@ -2200,7 +2417,7 @@ function Invoke-NavAction([string]$Id) {
             'sysinformer' { if (-not $script:Busy) { Start-SystemInformerTool } }
             'journal'     { if (-not $script:Busy) { Start-JournalTraceTool } }
             'lilith'      { if (-not $script:Busy) { Start-LilithTool } }
-            'tools'       { if (-not $script:Busy) { Show-ToolsMenu } }
+            'tools'       { if (-not $script:Busy) { Show-ToolsDropdown } }
             'manual'      { Show-ManualChecks }
             'theme'       { Switch-Theme }
             'prank'       { if (-not $script:Busy) { Show-PrankScreen } }
@@ -2440,12 +2657,13 @@ function New-PrankSkullBitmap([int]$BoxH) {
 # ------------------------------------------------------------
 # Ventanitas emergentes de susto (falsas, se cierran con un clic; Esc cierra todo)
 # ------------------------------------------------------------
-function New-PrankPopup($Pr, [string]$Title, [string]$Body, [bool]$WithBar) {
+function New-PrankPopup($Pr, [string]$Title, [string]$Body, [bool]$WithBar, [int]$PosX = -1, [int]$PosY = -1) {
     $col = [System.Drawing.Color]
-    $pw = [int]($Pr.W * 0.21); $ph = [int]($Pr.H * 0.17)
-    $pw = [math]::Max($pw, (Px 300)); $ph = [math]::Max($ph, (Px 130))
-    $x = $Pr.X0 + $Pr.Rnd.Next(10, [math]::Max(11, $Pr.W - $pw - 10))
-    $y = $Pr.Y0 + $Pr.Rnd.Next(10, [math]::Max(11, $Pr.H - $ph - 10))
+    $pw = [math]::Max([int]($Pr.W * 0.21), (Px 300))
+    $ph = [math]::Max([int]($Pr.H * 0.17), (Px 130))
+    $x = $PosX; $y = $PosY
+    if ($x -lt 0) { $x = $Pr.X0 + $Pr.Rnd.Next(0, [math]::Max(1, $Pr.W - $pw)) }
+    if ($y -lt 0) { $y = $Pr.Y0 + $Pr.Rnd.Next(0, [math]::Max(1, $Pr.H - $ph)) }
 
     $pf = New-Object System.Windows.Forms.Form
     $pf.FormBorderStyle = 'None'
@@ -2494,12 +2712,28 @@ function New-PrankPopup($Pr, [string]$Title, [string]$Body, [bool]$WithBar) {
     $inner.Controls.Add($tt)
     $pf.Controls.Add($inner)
 
-    $closer = { param($s, $e) try { $s.FindForm().Close() } catch { } }
+    $closer = {
+        param($s, $e)
+        try { $s.FindForm().Close() } catch { }
+        # Al cerrar una ventanita aparecen dos nuevas (solo antes del pantallazo azul)
+        try {
+            $p = $script:Pr
+            if ($p -and $p.BsodAt -eq 0 -and $p.Sw.ElapsedMilliseconds -ge 8000) {
+                $p.Popups = @($p.Popups | Where-Object { -not $_.Form.IsDisposed })
+                for ($i = 0; $i -lt 2; $i++) { if ($p.Popups.Count -lt 60) { Add-PrankPopupRandom $p } }
+            }
+        } catch { }
+    }
     foreach ($c in @($pf, $inner, $lb, $tt, $bar, $fill)) { $c.Add_Click($closer) }
     $pf.Add_KeyDown({ param($s, $e) if ($e.KeyCode -eq 'Escape') { try { $script:Pr.Form.Close() } catch { } } })
 
     $pf.Show($Pr.Form)
     return @{ Form = $pf; Fill = $fill; Max = ($pw - 4); Born = $Pr.Sw.ElapsedMilliseconds; Dur = (2500 + $Pr.Rnd.Next(0, 3500)); Bar = $WithBar }
+}
+
+function Add-PrankPopupRandom($Pr) {
+    $d = $Pr.PopDefs[$Pr.Rnd.Next($Pr.PopDefs.Count)]
+    $Pr.Popups += (New-PrankPopup $Pr $d.T $d.B $d.Bar)
 }
 
 function Close-PrankPopups($Pr) {
@@ -2508,20 +2742,22 @@ function Close-PrankPopups($Pr) {
 }
 
 # ------------------------------------------------------------
-# Pantalla de la broma (~52 s)
-#   0-4 s    alerta parpadeante
-#   4-24 s   terminal falsa + ventanitas cada ~2 s
-#   24-44 s  CAOS: temblor, destellos, cuenta atrás falsa, ventanitas cada ~0,6 s
-#   44-52 s  calavera + "JAJAJA CAÍSTE, CHAO"
+# Pantalla "Hackeo"
+#   0-3 s     alerta parpadeante
+#   3-8 s     terminal falsa con barra de carga (5 s)
+#   8 s +     CAOS: la pantalla tiembla y se va llenando de ventanitas hasta cubrirla toda
+#   luego     pantallazo azul falso (5 s)
+#   al final  calavera + "JSJS FUE BROMA" (~6,5 s)
+# Esc (o clic en el fondo) cierra todo en cualquier momento.
 # ------------------------------------------------------------
 function Show-PrankScreen {
     if ($script:Busy) { return }
     if (-not ([System.Management.Automation.PSTypeName]'SombrioRain').Type) {
         try { Add-Type -TypeDefinition $script:RainSource -ReferencedAssemblies 'System.Drawing' }
-        catch { Show-Info ("No se pudo preparar la animación:`n`n" + $_.Exception.Message) "BROMA"; return }
+        catch { Show-Info ("No se pudo preparar la animación:`n`n" + $_.Exception.Message) "HACKEO"; return }
     }
 
-    Set-Status "Preparando la broma..."
+    Set-Status "Preparando..."
     $ips   = Get-PrankIps
     $ipTxt = if ($ips.Public) { $ips.Public } else { $ips.Local }
 
@@ -2544,9 +2780,7 @@ function Show-PrankScreen {
     $lines.Add(@{ T = "> Copiando fotos, documentos y chats...";            C = 'G' })
     $lines.Add(@{ T = "> Activando cámara y micrófono... [OK]";             C = 'G' })
     $lines.Add(@{ T = "> Instalando keylogger... [ACTIVO]";                 C = 'Y' })
-    $lines.Add(@{ T = "> Accediendo a tus cuentas bancarias...";            C = 'Y' })
     $lines.Add(@{ T = "> Subiendo datos al servidor 666.13.37.1...";        C = 'G' })
-    $lines.Add(@{ T = "> Borrando huellas del sistema...";                  C = 'R' })
     $lines.Add(@{ T = "> No apagues el equipo.";                            C = 'R' })
     $total = 0; foreach ($l in $lines) { $total += $l.T.Length }
 
@@ -2563,6 +2797,25 @@ function Show-PrankScreen {
         @{ T = 'KEYLOGGER';          B = "Registrando teclas... [ACTIVO]`nÚltima: ********";         Bar = $false },
         @{ T = 'SESIÓN ROBADA';      B = "Cookies de sesión copiadas: 212";                          Bar = $true  }
     )
+
+    # Cuadrícula de posiciones: al ocuparlas todas, las ventanitas cubren la pantalla completa
+    $pw = [math]::Max([int]($w * 0.21), (Px 300))
+    $ph = [math]::Max([int]($h * 0.17), (Px 130))
+    $cols = [int][math]::Ceiling(($w - $pw) / ($pw * 0.85)) + 1
+    $rows = [int][math]::Ceiling(($h - $ph) / ($ph * 0.85)) + 1
+    $rndGrid = New-Object System.Random
+    $cellList = [System.Collections.Generic.List[object]]::new()
+    for ($r = 0; $r -lt $rows; $r++) {
+        for ($c = 0; $c -lt $cols; $c++) {
+            $cx = if ($cols -gt 1) { [int](($w - $pw) * $c / ($cols - 1)) } else { 0 }
+            $cy = if ($rows -gt 1) { [int](($h - $ph) * $r / ($rows - 1)) } else { 0 }
+            $jx = $rndGrid.Next(-(Px 8), (Px 8) + 1); $jy = $rndGrid.Next(-(Px 8), (Px 8) + 1)
+            $cx = [math]::Max(0, [math]::Min(($w - $pw), ($cx + $jx)))
+            $cy = [math]::Max(0, [math]::Min(($h - $ph), ($cy + $jy)))
+            $cellList.Add(@{ X = $cx; Y = $cy })
+        }
+    }
+    $cells = @($cellList | Sort-Object { $rndGrid.Next() })
 
     $f = New-Object System.Windows.Forms.Form
     $f.FormBorderStyle = 'None'
@@ -2587,16 +2840,18 @@ function Show-PrankScreen {
         Total = $total
         PopDefs = $popDefs
         Popups = @()
+        Cells = $cells
+        GridIdx = 0
         LastPop = 0
-        Cleared = $false
+        BsodAt = 0
         Center = $center
         Skull = New-PrankSkullBitmap $skullH
         FBig  = New-Object System.Drawing.Font('Consolas', [single]($h / 11), $bold, $px)
         FMid  = New-Object System.Drawing.Font('Consolas', [single]($h / 24), $bold, $px)
         FTerm = New-Object System.Drawing.Font('Consolas', [single]($h / 38), $bold, $px)
         FSmall = New-Object System.Drawing.Font('Consolas', [single]($h / 54), $bold, $px)
-        FEnd  = New-Object System.Drawing.Font('Consolas', [single]($h / 13), $bold, $px)
-        FCount = New-Object System.Drawing.Font('Consolas', [single]($h / 7), $bold, $px)
+        FEnd  = New-Object System.Drawing.Font('Consolas', [single]($h / 11), $bold, $px)
+        FBsod = New-Object System.Drawing.Font('Segoe UI', [single]($h / 5), [System.Drawing.FontStyle]::Regular, $px)
         BrGreen = New-Object System.Drawing.SolidBrush($col::FromArgb(0, 255, 110))
         BrDark  = New-Object System.Drawing.SolidBrush($col::FromArgb(0, 110, 50))
         BrRed   = New-Object System.Drawing.SolidBrush($col::FromArgb(255, 60, 70))
@@ -2624,22 +2879,29 @@ function Show-PrankScreen {
         if ($null -eq $p) { return }
         $t = $p.Sw.ElapsedMilliseconds
         $p.Rain.Update()
-
-        # Ventanitas: poco a poco en la terminal, muchas en el caos
         $p.Popups = @($p.Popups | Where-Object { -not $_.Form.IsDisposed })
-        if ($t -ge 8000 -and $t -lt 44000) {
-            $interval = if ($t -lt 24000) { 2200 } else { 650 }
-            if (($t - $p.LastPop) -ge $interval -and $p.Popups.Count -lt 14) {
-                $d = $p.PopDefs[$p.Rnd.Next($p.PopDefs.Count)]
-                try {
-                    $p.Popups += (New-PrankPopup $p $d.T $d.B $d.Bar)
-                    [System.Media.SystemSounds]::Exclamation.Play()
-                } catch { }
-                $p.LastPop = $t
+
+        # Desde el caos se van colocando ventanitas hasta llenar toda la pantalla
+        if ($p.BsodAt -eq 0 -and $t -ge 8000) {
+            if ($p.GridIdx -lt $p.Cells.Count) {
+                if (($t - $p.LastPop) -ge 230) {
+                    $cell = $p.Cells[$p.GridIdx]
+                    $p.GridIdx++
+                    $d = $p.PopDefs[$p.Rnd.Next($p.PopDefs.Count)]
+                    try {
+                        $p.Popups += (New-PrankPopup $p $d.T $d.B $d.Bar ($p.X0 + $cell.X) ($p.Y0 + $cell.Y))
+                        if (($p.GridIdx % 4) -eq 1) { [System.Media.SystemSounds]::Exclamation.Play() }
+                    } catch { }
+                    $p.LastPop = $t
+                }
             }
+            elseif (($t - $p.LastPop) -ge 1500) {
+                # Pantalla llena: salta el pantallazo azul
+                $p.BsodAt = $t
+                Close-PrankPopups $p
+            }
+            if ($p.BsodAt -eq 0 -and ($t - 8000) -ge 40000) { $p.BsodAt = $t; Close-PrankPopups $p }   # seguro anti-bloqueo
         }
-        # Al llegar a la calavera se limpian las ventanitas
-        if ($t -ge 44000 -and -not $p.Cleared) { Close-PrankPopups $p; $p.Cleared = $true }
 
         # Barras de progreso de las ventanitas
         foreach ($pp in $p.Popups) {
@@ -2650,7 +2912,7 @@ function Show-PrankScreen {
         }
 
         $p.Form.Invalidate()
-        if ($t -ge 52500) { $p.Form.Close() }
+        if ($p.BsodAt -gt 0 -and $t -ge ($p.BsodAt + 5000 + 6500)) { $p.Form.Close() }
     })
 
     $f.Add_Paint({
@@ -2661,7 +2923,9 @@ function Show-PrankScreen {
             $g = $e.Graphics
             $t = $p.Sw.ElapsedMilliseconds
             $w = $p.W; $h = $p.H
-            $phase = if ($t -lt 4000) { 1 } elseif ($t -lt 24000) { 2 } elseif ($t -lt 44000) { 3 } else { 4 }
+            $ba = $p.BsodAt
+            $phase = if ($ba -gt 0) { if ($t -lt ($ba + 5000)) { 4 } else { 5 } }
+                     elseif ($t -lt 3000) { 1 } elseif ($t -lt 8000) { 2 } else { 3 }
             $g.Clear([System.Drawing.Color]::Black)
             $g.SmoothingMode = 'AntiAlias'
             $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
@@ -2671,8 +2935,7 @@ function Show-PrankScreen {
                 $j = (Px 7)
                 $g.TranslateTransform([single]($p.Rnd.Next(-$j, $j + 1)), [single]($p.Rnd.Next(-$j, $j + 1)))
             }
-
-            $p.Rain.Draw($g, ($phase -eq 4))
+            if ($phase -le 3) { $p.Rain.Draw($g, $false) }
 
             if ($phase -eq 1) {
                 # ---- FASE 1: ALERTA ----
@@ -2687,8 +2950,8 @@ function Show-PrankScreen {
                 $g.DrawString([string]"ACCESO NO AUTORIZADO DETECTADO", $p.FMid, $p.BrRed, $r2, $p.Center)
             }
             elseif ($phase -eq 2) {
-                # ---- FASE 2: TERMINAL FALSA ----
-                $on = ((([int][math]::Floor($t / 350)) % 2) -eq 0)
+                # ---- FASE 2: TERMINAL FALSA + BARRA DE CARGA (5 s) ----
+                $on = ((([int][math]::Floor($t / 200)) % 2) -eq 0)
                 $bx = [single]($w * 0.12); $by = [single]($h * 0.10)
                 $bw = [single]($w * 0.76); $bh = [single]($h * 0.80)
                 $g.FillRectangle($p.BrPanel, $bx, $by, $bw, $bh)
@@ -2699,7 +2962,7 @@ function Show-PrankScreen {
 
                 $lineH = $p.FTerm.Height + 6
                 $y = $by + $p.FSmall.Height + 34
-                $n = [int][math]::Floor([math]::Min(1.0, ($t - 4000) / 17000.0) * $p.Total)
+                $n = [int][math]::Floor([math]::Min(1.0, ($t - 3000) / 4200.0) * $p.Total)
                 foreach ($ln in $p.Lines) {
                     if ($n -le 0) { break }
                     $take = [math]::Min($n, $ln.T.Length)
@@ -2711,7 +2974,7 @@ function Show-PrankScreen {
                     $y += $lineH
                 }
 
-                $frac = [math]::Max(0.0, [math]::Min(1.0, ($t - 5000) / 18500.0))
+                $frac = [math]::Max(0.0, [math]::Min(1.0, ($t - 3000) / 4800.0))
                 $pct = [int][math]::Floor($frac * 100)
                 $barY = $by + $bh - (Px 78)
                 $g.DrawString([string]("TRANSFERENCIA DE DATOS  $pct%"), $p.FSmall, $p.BrGreen, [single]($bx + 24), [single]$barY)
@@ -2720,39 +2983,39 @@ function Show-PrankScreen {
                 $g.FillRectangle($p.BrGreen, [single]($bx + 26), [single]($barY + $p.FSmall.Height + 10), [single](($barW - 4) * $frac), [single]((Px 24) - 4))
             }
             elseif ($phase -eq 3) {
-                # ---- FASE 3: CAOS ----
-                $tc = $t - 24000
+                # ---- FASE 3: CAOS (las ventanitas van llenando la pantalla) ----
+                $tc = $t - 8000
                 $on = ((([int][math]::Floor($tc / 180)) % 2) -eq 0)
                 if ($on) { $g.FillRectangle($p.BrFlash, -20, -20, ($w + 40), ($h + 40)) }
                 if ($p.Rnd.Next(0, 9) -eq 0) { $g.FillRectangle($p.BrFlashW, -20, -20, ($w + 40), ($h + 40)) }
                 $g.DrawRectangle($p.PenRed, 4, 4, ($w - 8), ($h - 8))
-
-                # Barras de "glitch" horizontales al azar
                 for ($i = 0; $i -lt 4; $i++) {
                     $gy = $p.Rnd.Next(0, $h); $gh = $p.Rnd.Next((Px 6), (Px 40))
                     $gb = if (($i % 2) -eq 0) { $p.BrGlitch } else { $p.BrGlitchR }
                     $g.FillRectangle($gb, 0, $gy, $w, $gh)
                 }
-
-                $g.FillRectangle($p.BrVeil, 0, [single]($h * 0.30), $w, [single]($h * 0.40))
-                $r1 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.31), $w, [single]($h * 0.12))
-                $r2 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.43), $w, [single]($h * 0.08))
-                $r3 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.50), $w, [single]($h * 0.19))
+                $g.FillRectangle($p.BrVeil, 0, [single]($h * 0.38), $w, [single]($h * 0.24))
+                $r1 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.40), $w, [single]($h * 0.20))
                 $brA = if ($on) { $p.BrRed } else { $p.BrWhite }
                 $g.DrawString([string]"ACCESO TOTAL CONCEDIDO", $p.FMid, $brA, $r1, $p.Center)
-                $g.DrawString([string]"ELIMINANDO TODOS TUS ARCHIVOS EN:", $p.FMid, $p.BrYellow, $r2, $p.Center)
-                $left = [int][math]::Ceiling((44000 - $t) / 1000.0)
-                $left = [math]::Max(0, [math]::Min(20, $left))
-                $g.DrawString([string]("{0:00}" -f $left), $p.FCount, $(if ($on) { $p.BrRed } else { $p.BrGreen }), $r3, $p.Center)
+            }
+            elseif ($phase -eq 4) {
+                # ---- FASE 4: PANTALLAZO AZUL FALSO (genérico, sin marcas) ----
+                $tb4 = $t - $ba
+                $g.Clear([System.Drawing.Color]::FromArgb(0, 96, 190))
+                $mx = [single]($w * 0.08)
+                $g.DrawString([string]":(", $p.FBsod, $p.BrWhite, $mx, [single]($h * 0.10))
+                $g.DrawString([string]"Se ha producido un error crítico del sistema.`nSe están recopilando los datos del error...", $p.FMid, $p.BrWhite, $mx, [single]($h * 0.42))
+                $pct4 = [int][math]::Min(100, [math]::Floor($tb4 / 4600.0 * 100))
+                $g.DrawString([string]("$pct4% completado"), $p.FMid, $p.BrWhite, $mx, [single]($h * 0.58))
+                $g.DrawString([string]"Código de detención: SOMBRIO_HACKED_BY_JAJA", $p.FTerm, $p.BrWhite, $mx, [single]($h * 0.76))
             }
             else {
-                # ---- FASE 4: CALAVERA FINAL ----
-                $tp = $t - 44000
-                $a = [single][math]::Min(1.0, $tp / 700.0)
-                $g.FillRectangle($p.BrVeil, 0, 0, $w, $h)
-
+                # ---- FASE 5: SOLO CALAVERA + "JSJS FUE BROMA" ----
+                $tp = $t - ($ba + 5000)
+                $a = [single][math]::Min(1.0, $tp / 600.0)
                 $bmp = $p.Skull
-                $dest = New-Object System.Drawing.Rectangle([int](($w - $bmp.Width) / 2), [int]($h * 0.02), $bmp.Width, $bmp.Height)
+                $dest = New-Object System.Drawing.Rectangle([int](($w - $bmp.Width) / 2), [int]($h * 0.04), $bmp.Width, $bmp.Height)
                 $cm = New-Object System.Drawing.Imaging.ColorMatrix
                 $cm.Matrix33 = $a
                 $ia = New-Object System.Drawing.Imaging.ImageAttributes
@@ -2760,19 +3023,15 @@ function Show-PrankScreen {
                 $g.DrawImage($bmp, $dest, 0, 0, $bmp.Width, $bmp.Height, [System.Drawing.GraphicsUnit]::Pixel, $ia)
                 $ia.Dispose()
 
-                if ($tp -gt 700) {
+                if ($tp -gt 600) {
                     $blink = ((([int][math]::Floor($tp / 350)) % 2) -eq 0)
-                    $r1 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.66), $w, [single]($h * 0.14))
-                    $r1s = New-Object System.Drawing.RectangleF(4, [single]($h * 0.66 + 4), $w, [single]($h * 0.14))
-                    $r2 = New-Object System.Drawing.RectangleF(0, [single]($h * 0.81), $w, [single]($h * 0.07))
-                    $g.DrawString([string]"JAJAJA CAÍSTE, CHAO", $p.FEnd, $p.BrDark, $r1s, $p.Center)
-                    $g.DrawString([string]"JAJAJA CAÍSTE, CHAO", $p.FEnd, $(if ($blink) { $p.BrGreen } else { $p.BrWhite }), $r1, $p.Center)
-                    $g.DrawString([string]"(era una broma, tu PC está perfecta)", $p.FMid, $p.BrGreen, $r2, $p.Center)
+                    $r1  = New-Object System.Drawing.RectangleF(0, [single]($h * 0.70), $w, [single]($h * 0.18))
+                    $r1s = New-Object System.Drawing.RectangleF(4, [single]($h * 0.70 + 4), $w, [single]($h * 0.18))
+                    $g.DrawString([string]"JSJS FUE BROMA", $p.FEnd, $p.BrDark, $r1s, $p.Center)
+                    $g.DrawString([string]"JSJS FUE BROMA", $p.FEnd, $(if ($blink) { $p.BrGreen } else { $p.BrWhite }), $r1, $p.Center)
                 }
             }
-
             $g.ResetTransform()
-            $g.DrawString([string]"Esc = salir", $p.FSmall, $p.BrDark, [single]12, [single]($h - $p.FSmall.Height - 10))
         } catch { }
     })
 
@@ -2785,10 +3044,10 @@ function Show-PrankScreen {
             $p.Timer.Stop(); $p.Timer.Dispose()
             Close-PrankPopups $p
             $p.Rain.Dispose(); $p.Skull.Dispose(); $p.Center.Dispose()
-            foreach ($k in 'FBig', 'FMid', 'FTerm', 'FSmall', 'FEnd', 'FCount', 'BrGreen', 'BrDark', 'BrRed', 'BrYellow', 'BrWhite', 'BrFlash', 'BrFlashW', 'BrGlitch', 'BrGlitchR', 'BrVeil', 'BrPanel', 'PenGreen', 'PenRed') { $p[$k].Dispose() }
+            foreach ($k in 'FBig', 'FMid', 'FTerm', 'FSmall', 'FEnd', 'FBsod', 'BrGreen', 'BrDark', 'BrRed', 'BrYellow', 'BrWhite', 'BrFlash', 'BrFlashW', 'BrGlitch', 'BrGlitchR', 'BrVeil', 'BrPanel', 'PenGreen', 'PenRed') { $p[$k].Dispose() }
         } catch { }
         $f.Dispose()
-        Set-Status "Broma terminada. (Era solo una pantalla: no se tocó nada en tu PC.)"
+        Set-Status "Listo. Era solo una pantalla: no se tocó nada en tu PC."
     }
 }
 
@@ -2830,9 +3089,10 @@ $isAdminNow       = Test-Administrator
 # --- Ventana principal ---
 $script:Form = New-Object System.Windows.Forms.Form
 $script:Form.Text = "EL SOMBRIO IF  ·  Forensic Scanner V80"
+$script:Form.FormBorderStyle = 'Sizable'
 $script:Form.StartPosition = 'CenterScreen'
 $script:Form.ClientSize = New-Object System.Drawing.Size((Px 1320), (Px 800))
-$script:Form.MinimumSize = New-Object System.Drawing.Size((Px 1040), (Px 660))
+$script:Form.MinimumSize = New-Object System.Drawing.Size((Px 1180), (Px 700))
 $script:Form.BackColor = $script:C.Bg
 $script:Form.ForeColor = $script:C.Text
 $script:Form.Font = $script:FontBase
@@ -2874,11 +3134,14 @@ $grid.DefaultCellStyle.Padding = [System.Windows.Forms.Padding]::new((Px 6), 0, 
 $grid.AlternatingRowsDefaultCellStyle.BackColor = $script:C.Row2
 $grid.EnableHeadersVisualStyles = $false
 $grid.ColumnHeadersDefaultCellStyle.BackColor = $script:C.Panel2
-$grid.ColumnHeadersDefaultCellStyle.ForeColor = $script:C.Muted
+$grid.ColumnHeadersDefaultCellStyle.ForeColor = $script:C.Accent
 $grid.ColumnHeadersDefaultCellStyle.Font = $script:FontBold
+$grid.ColumnHeadersDefaultCellStyle.Alignment = 'MiddleLeft'
+$grid.ColumnHeadersBorderStyle = 'None'
 $grid.ColumnHeadersHeight = (Px 34)
 $grid.ColumnHeadersHeightSizeMode = 'DisableResizing'
-$grid.RowTemplate.Height = (Px 26)
+$grid.RowTemplate.Height = (Px 30)
+$grid.DefaultCellStyle.Padding = [System.Windows.Forms.Padding]::new((Px 10), (Px 3), (Px 10), (Px 3))
 try {
     $pi = [System.Windows.Forms.DataGridView].GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic')
     $pi.SetValue($grid, $true, $null)
@@ -2991,7 +3254,7 @@ foreach ($def in $script:CatDefs) {
     $chip.Padding = [System.Windows.Forms.Padding]::new((Px 8), 0, (Px 8), 0)
     $chip.Margin = [System.Windows.Forms.Padding]::new(0, 0, (Px 6), (Px 6))
     $chip.FlatStyle = 'Flat'
-    $chip.FlatAppearance.BorderSize = 1
+    $chip.FlatAppearance.BorderSize = 0
     $chip.FlatAppearance.BorderColor = $script:C.Border
     $chip.FlatAppearance.MouseOverBackColor = $script:C.Hover
     $chip.UseVisualStyleBackColor = $false
@@ -2999,74 +3262,267 @@ foreach ($def in $script:CatDefs) {
     $chip.ForeColor = $script:C.Muted
     $chip.Font = $fontSmall
     $chip.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $chip.MinimumSize = New-Object System.Drawing.Size(0, (Px 36))
+    $chip.Add_Paint({
+        param($s, $e)
+        try {
+            if ([string]$s.Tag -eq $script:ActiveCat) {
+                $ab = New-Object System.Drawing.Drawing2D.LinearGradientBrush((New-Object System.Drawing.Rectangle(0, ($s.Height - (Px 3)), [math]::Max(2, $s.Width), (Px 3))), $script:C.Accent, $script:C.Pink, 0.0)
+                $e.Graphics.FillRectangle($ab, 0, ($s.Height - (Px 3)), $s.Width, (Px 3))
+                $ab.Dispose()
+            }
+        } catch { }
+    })
     $chip.Add_Click({ param($s, $e) if (-not $script:Busy) { Show-Category ([string]$s.Tag) } })
     $script:CatButtons[$def.Key] = $chip
     $script:Chips.Controls.Add($chip)
 }
 
-# Portada (arte + atajos)
+# Portada limpia: titulo, boton principal y tarjetas informativas
+function New-HomeCard([int]$X, [string]$Title, [string]$Body, $Tint) {
+    $card = New-Object System.Windows.Forms.Panel
+    $card.SetBounds((Px $X), (Px 262), (Px 256), (Px 176))
+    $card.BackColor = $script:C.Panel2
+    $card.Add_Paint({ param($s, $e)
+        $pen = New-Object System.Drawing.Pen((Merge-Color $script:C.Accent $script:C.Panel2 0.35))
+        $e.Graphics.DrawRectangle($pen, 0, 0, ($s.Width - 1), ($s.Height - 1))
+        $pen.Dispose()
+    })
+    $bar = New-Object System.Windows.Forms.Panel
+    $bar.Dock = 'Top'; $bar.Height = (Px 3); $bar.BackColor = $Tint
+    $lt = New-Object System.Windows.Forms.Label
+    $lt.Text = $Title; $lt.Font = $fontSmall; $lt.ForeColor = $Tint; $lt.BackColor = $script:C.Panel2
+    $lt.SetBounds((Px 18), (Px 18), (Px 220), (Px 20))
+    $lb = New-Object System.Windows.Forms.Label
+    $lb.Text = $Body; $lb.Font = $script:FontBase; $lb.ForeColor = $script:C.Text; $lb.BackColor = $script:C.Panel2
+    $lb.SetBounds((Px 18), (Px 48), (Px 226), (Px 120))
+    $card.Controls.AddRange(@($bar, $lt, $lb))
+    return $card
+}
+
+function New-PixelCat([int]$Scale, [bool]$EyesOpen) {
+    $rows = @'
+....KK............KK........
+...KFFK..........KFFK.......
+...KFPFK........KFPFK.......
+..KFFPFFKKKKKKKKFFPFFK......
+.KFFFFFFFFFFFFFFFFFFFF......
+.KFFFFFFFFFFFFFFFFFFFF......
+.KFFFYDYFFFFFFFFYDYFFF......
+.KFFFYDYFFFFFFFFYDYFFF......
+.KFFFFFFFFFPPFFFFFFFFF......
+.KFFFFFFFFMFFMFFFFFFFF......
+.KFFFFFFFFFMMFFFFFFFFF......
+..KFFFFFFFFFFFFFFFFFFK......
+...KKKKKKKKKKKKKKKKKK.......
+....KFFFFFFFFFFFFFFK........
+....KFFFFFHHHHFFFFFK.....KK.
+...KFFFFFHHHHHHFFFFFK...KFFK
+...KFFFFFHHHHHHFFFFFK...KFFK
+..KFFFFFFHHHHHHFFFFFFK..KFFK
+..KFFFFFFFHHHHFFFFFFFK..KFFK
+..KFFFFFFFFFFFFFFFFFFK..KFFK
+..KFFFFFFFFFFFFFFFFFFK..KFFK
+..KFFFFFFFFKKFFFFFFFFK.KFFFK
+..KFFFFFFFFKKFFFFFFFFK.KFFFK
+..KFFFFFFFFKKFFFFFFFFKKFFFFK
+..KKKKKKKKKKKKKKKKKKKKKKKKKK
+'@ -split "`n"
+    $cols = @{
+        'K' = (Merge-Color $script:C.Text $script:C.Bg 0.10)
+        'M' = (Merge-Color $script:C.Text $script:C.Bg 0.10)
+        'F' = (Merge-Color $script:C.Text $script:C.Bg 0.22)
+        'H' = (Merge-Color $script:C.Text $script:C.Bg 0.31)
+        'P' = (Merge-Color $script:C.Pink $script:C.Bg 0.65)
+        'Y' = (Merge-Color $script:C.Yellow $script:C.Bg 0.80)
+        'D' = [System.Drawing.Color]::FromArgb(255, 8, 8, 10)
+    }
+    $w = 28 * $Scale; $h = 25 * $Scale
+    $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
+    try {
+        $g.SmoothingMode = 'None'
+        $g.PixelOffsetMode = 'Half'
+        for ($y = 0; $y -lt $rows.Count; $y++) {
+            $line = ([string]$rows[$y]).Trim()
+            for ($x = 0; $x -lt $line.Length; $x++) {
+                $ch = [string]$line[$x]
+                if ($ch -eq '.') { continue }
+                if (-not $EyesOpen -and ($ch -eq 'Y' -or $ch -eq 'D')) { $ch = if ($y -eq 6) { 'F' } else { 'K' } }
+                $br = New-Object System.Drawing.SolidBrush($cols[$ch])
+                $g.FillRectangle($br, ($x * $Scale), ($y * $Scale), $Scale, $Scale)
+                $br.Dispose()
+            }
+        }
+    } finally { $g.Dispose() }
+    return ,$bmp
+}
+
+$script:CatOpen   = New-PixelCat (Px 8) $true
+$script:CatClosed = New-PixelCat (Px 8) $false
+$script:CatBlink  = $false
+$script:CatTick   = 0
+
 $script:HomeArt = New-Object System.Windows.Forms.Panel
-$script:HomeArt.BackColor = $script:C.Bg
+$script:HomeArt.BackColor = [System.Drawing.Color]::Transparent
+$script:HomeArt.Size = New-Object System.Drawing.Size((Px 800), (Px 450))
+$script:HomeArt.Add_Paint({ param($s, $e)
+    try {
+        $g = $e.Graphics
+        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+        $rect = New-Object System.Drawing.Rectangle(0, (Px 24), (Px 420), (Px 70))
+        $lg = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, $script:C.Accent, $script:C.Pink, 0.0)
+        $g.DrawString("El Sombrio IF", $script:FontHero, $lg, 0, (Px 24))
+        $lg.Dispose()
+        $cb = if ($script:CatBlink) { $script:CatClosed } else { $script:CatOpen }
+        $g.InterpolationMode = 'NearestNeighbor'
+        $g.PixelOffsetMode = 'Half'
+        $g.DrawImage($cb, ($s.Width - $cb.Width - (Px 14)), (Px 30), $cb.Width, $cb.Height)
+    } catch { }
+})
 
-$lblBanner = New-Object System.Windows.Forms.Label
-$lblBanner.AutoSize = $true
-$lblBanner.Font = $fontMono
-$lblBanner.ForeColor = $script:C.Accent
-$lblBanner.Text = ($script:BannerText.TrimEnd())
+$lblEyebrow = New-Object System.Windows.Forms.Label
+$lblEyebrow.Text = "//  PLATAFORMA DE ANÁLISIS FORENSE"
+$lblEyebrow.Font = New-Object System.Drawing.Font('Consolas', [single]9.5, [System.Drawing.FontStyle]::Bold)
+$lblEyebrow.ForeColor = $script:C.Accent
+$lblEyebrow.AutoSize = $true
+$lblEyebrow.BackColor = [System.Drawing.Color]::Transparent
+$lblEyebrow.Location = New-Object System.Drawing.Point(0, 0)
 
-$lblTag = New-Object System.Windows.Forms.Label
-$lblTag.AutoSize = $true
-$lblTag.Font = $fontHeader
-$lblTag.ForeColor = $script:C.Text
-$lblTag.Text = "FORENSIC SCANNER  ·  V79"
+$lblHero = New-Object System.Windows.Forms.Label
+$lblHero.Text = "El Sombrio IF"
+$lblHero.Font = New-Object System.Drawing.Font('Segoe UI Semibold', [single]34, [System.Drawing.FontStyle]::Regular)
+$lblHero.ForeColor = $script:C.Text
+$lblHero.Visible = $false
+$script:FontHero = $lblHero.Font
+$lblHero.AutoSize = $true
+$lblHero.Location = New-Object System.Drawing.Point(0, (Px 24))
 
-$lblKeys = New-Object System.Windows.Forms.Label
-$lblKeys.AutoSize = $true
-$lblKeys.Font = $script:FontBase
-$lblKeys.ForeColor = $script:C.Muted
-$lblKeys.Text = "F5       Auditoría global`r`nCtrl+F   Buscar en la tabla`r`nCtrl+E   Exportar la vista a CSV`r`nEsc      Limpiar el buscador`r`nDoble clic / clic derecho sobre una fila: abrir ubicación o copiar"
+$lblSub = New-Object System.Windows.Forms.Label
+$lblSub.Text = "Revisión forense para screenshare: mods, memoria, prefetch,`r`npapelera, macros y detección de archivos renombrados."
+$lblSub.Font = New-Object System.Drawing.Font('Segoe UI', [single]11.5, [System.Drawing.FontStyle]::Regular)
+$lblSub.ForeColor = $script:C.Muted
+$lblSub.AutoSize = $true
+$lblSub.BackColor = [System.Drawing.Color]::Transparent
+$lblSub.Location = New-Object System.Drawing.Point(0, (Px 98))
 
-$lblArt = New-Object System.Windows.Forms.Label
-$lblArt.AutoSize = $true
-$lblArt.Font = $fontArt
-$lblArt.ForeColor = $script:C.Pink
-$lblArt.Text = ($script:sideGirl -join "`r`n")
+$btnStart = New-Object System.Windows.Forms.Button
+$btnStart.Text = "Iniciar auditoría global     F5"
+$btnStart.Size = New-Object System.Drawing.Size((Px 300), (Px 46))
+$btnStart.Location = New-Object System.Drawing.Point(0, (Px 176))
+$btnStart.FlatStyle = 'Flat'
+$btnStart.FlatAppearance.BorderSize = 0
+$btnStart.UseVisualStyleBackColor = $false
+$btnStart.BackColor = $script:C.Accent
+$btnStart.ForeColor = [System.Drawing.Color]::White
+$btnStart.FlatAppearance.MouseOverBackColor = (Merge-Color ([System.Drawing.Color]::White) $script:C.Accent 0.15)
+$btnStart.FlatAppearance.MouseDownBackColor = (Merge-Color ([System.Drawing.Color]::Black) $script:C.Accent 0.2)
+$btnStart.Font = New-Object System.Drawing.Font('Segoe UI', [single]10.5, [System.Drawing.FontStyle]::Bold)
+$btnStart.Cursor = [System.Windows.Forms.Cursors]::Hand
+$btnStart.TabStop = $false
+$btnStart.Add_MouseEnter({ param($s, $e) $s.Invalidate() })
+$btnStart.Add_MouseLeave({ param($s, $e) $s.Invalidate() })
+$btnStart.Add_Paint({ param($s, $e)
+    try {
+        $g = $e.Graphics
+        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+        $hover = $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position))
+        $k = if ($hover) { 0.95 } else { 0.7 }
+        $rect = New-Object System.Drawing.Rectangle(0, 0, $s.Width, $s.Height)
+        $lg = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rect, (Merge-Color $script:C.Accent $script:C.Bg ($k * 0.55)), (Merge-Color $script:C.Pink $script:C.Bg ($k * 0.8)), 0.0)
+        $g.FillRectangle($lg, $rect)
+        $lg.Dispose()
+        $pen = New-Object System.Drawing.Pen($script:C.Accent, [single]2)
+        $g.DrawRectangle($pen, 1, 1, ($s.Width - 3), ($s.Height - 3))
+        $pen.Dispose()
+        $sf = New-Object System.Drawing.StringFormat
+        $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+        $g.DrawString("▶   INICIAR AUDITORÍA GLOBAL      F5", $s.Font, [System.Drawing.Brushes]::White, (New-Object System.Drawing.RectangleF(0, 0, $s.Width, $s.Height)), $sf)
+        $sf.Dispose()
+    } catch { }
+})
+$btnStart.Add_Click({ Invoke-NavAction 'global' })
 
-$szBanner = $lblBanner.GetPreferredSize([System.Drawing.Size]::Empty)
-$szTag    = $lblTag.GetPreferredSize([System.Drawing.Size]::Empty)
-$szKeys   = $lblKeys.GetPreferredSize([System.Drawing.Size]::Empty)
-$szArt    = $lblArt.GetPreferredSize([System.Drawing.Size]::Empty)
-$leftW = [math]::Max($szBanner.Width, $szKeys.Width)
-$leftH = $szBanner.Height + (Px 14) + $szTag.Height + (Px 22) + $szKeys.Height
-$totW  = $leftW + (Px 36) + $szArt.Width
-$totH  = [math]::Max($leftH, $szArt.Height)
-$script:HomeArt.Size = New-Object System.Drawing.Size($totW, $totH)
-$offY = [int](($totH - $leftH) / 2)
-$lblBanner.Location = New-Object System.Drawing.Point(0, $offY)
-$lblTag.Location    = New-Object System.Drawing.Point(0, ($offY + $szBanner.Height + (Px 14)))
-$lblKeys.Location   = New-Object System.Drawing.Point(0, ($offY + $szBanner.Height + (Px 14) + $szTag.Height + (Px 22)))
-$lblArt.Location    = New-Object System.Drawing.Point(($leftW + (Px 36)), [int](($totH - $szArt.Height) / 2))
-$script:HomeArt.Controls.AddRange(@($lblBanner, $lblTag, $lblKeys, $lblArt))
+$adminLine = if ($isAdminNow) { "●  Administrador" } else { "●  Sin permisos de admin" }
+$card1 = New-HomeCard 0   "QUÉ REVISA"  "Memoria y procesos`r`nPrefetch y papelera`r`nMods por versión de Minecraft`r`nMacros y autoclickers`r`nAnti-bypass y disco profundo" $script:C.Accent
+$card2 = New-HomeCard 272 "ATAJOS"      "F5              Auditoría global`r`nCtrl+F        Buscar en la tabla`r`nCtrl+E        Exportar a CSV`r`nEsc             Limpiar filtro`r`nClic der.    Más acciones" $script:C.Green
+$card3 = New-HomeCard 544 "SESIÓN"      "$adminLine`r`nTema:  $($script:ThemeName)`r`nVersión:  V80`r`nReporte: Escritorio (.txt)" $(if ($isAdminNow) { $script:C.Yellow } else { $script:C.Red })
+
+$script:HomeArt.Controls.AddRange(@($lblEyebrow, $lblHero, $lblSub, $btnStart, $card1, $card2, $card3))
+$script:CatTimer = New-Object System.Windows.Forms.Timer
+$script:CatTimer.Interval = 220
+$script:CatTimer.Add_Tick({
+    try {
+        $script:CatTick++
+        $nb = (($script:CatTick % 16) -eq 0)
+        if ($nb -ne $script:CatBlink) {
+            $script:CatBlink = $nb
+            if ($script:HomeArt -and $script:HomeArt.Visible) { $script:HomeArt.Invalidate() }
+        }
+    } catch { }
+})
+$script:CatTimer.Start()
 
 # Orden de apilado: el control que rellena va primero; el último "Top" queda arriba del todo
 $script:HostPanel.Controls.Add($grid)
 $script:HostPanel.Controls.Add($script:FilterBar)
 $script:HostPanel.Controls.Add($script:Chips)
 $script:HostPanel.Controls.Add($script:HomeArt)
-$script:HostPanel.Add_Resize({ Move-HomeArt })
+try {
+    $script:HostPanel.GetType().GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($script:HostPanel, $true, $null)
+} catch { }
+$script:HostPanel.Add_Paint({ param($s, $e)
+    try {
+        $g = $e.Graphics
+        $w = $s.ClientSize.Width; $h = $s.ClientSize.Height
+        if ($w -lt 10 -or $h -lt 10) { return }
+        $g.SmoothingMode = 'AntiAlias'
+        # resplandor suave
+        $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $path.AddEllipse([int]($w * 0.45), [int](-$h * 0.35), [int]($w * 0.8), [int]($h * 1.1))
+        $pg = New-Object System.Drawing.Drawing2D.PathGradientBrush($path)
+        $pg.CenterColor = [System.Drawing.Color]::FromArgb(20, $script:C.Accent.R, $script:C.Accent.G, $script:C.Accent.B)
+        $pg.SurroundColors = @([System.Drawing.Color]::FromArgb(0, $script:C.Accent.R, $script:C.Accent.G, $script:C.Accent.B))
+        $g.FillPath($pg, $path)
+        $pg.Dispose(); $path.Dispose()
+        $path2 = New-Object System.Drawing.Drawing2D.GraphicsPath
+        $path2.AddEllipse([int](-$w * 0.2), [int]($h * 0.45), [int]($w * 0.7), [int]($h * 0.9))
+        $pg2 = New-Object System.Drawing.Drawing2D.PathGradientBrush($path2)
+        $pg2.CenterColor = [System.Drawing.Color]::FromArgb(16, $script:C.Pink.R, $script:C.Pink.G, $script:C.Pink.B)
+        $pg2.SurroundColors = @([System.Drawing.Color]::FromArgb(0, $script:C.Pink.R, $script:C.Pink.G, $script:C.Pink.B))
+        $g.FillPath($pg2, $path2)
+        $pg2.Dispose(); $path2.Dispose()
+        # cuadricula
+        $pen = New-Object System.Drawing.Pen([System.Drawing.Color]::FromArgb(16, $script:C.Accent.R, $script:C.Accent.G, $script:C.Accent.B))
+        $step = (Px 44)
+        for ($x = 0; $x -lt $w; $x += $step) { $g.DrawLine($pen, $x, 0, $x, $h) }
+        for ($y = 0; $y -lt $h; $y += $step) { $g.DrawLine($pen, 0, $y, $w, $y) }
+        $pen.Dispose()
+    } catch { }
+})
+$script:HostPanel.Add_Resize({ Move-HomeArt; $script:HostPanel.Invalidate() })
 
 # --- Cabecera (título de la vista + botones) ---
 $header = New-Object System.Windows.Forms.Panel
 $header.Dock = 'Top'
-$header.Height = (Px 54)
+$header.Height = (Px 64)
 $header.BackColor = $script:C.Panel
+$header.Padding = [System.Windows.Forms.Padding]::new((Px 24), 0, (Px 20), 0)
 $header.Padding = [System.Windows.Forms.Padding]::new((Px 20), 0, (Px 16), 0)
+
+$header.Add_Paint({ param($s, $e)
+    $pen = New-Object System.Drawing.Pen($script:C.Border)
+    $lgb = New-Object System.Drawing.Drawing2D.LinearGradientBrush((New-Object System.Drawing.Rectangle(0, ($s.Height - 2), [math]::Max(2, $s.Width), 2)), $script:C.Accent, $script:C.Bg, 0.0)
+    $e.Graphics.FillRectangle($lgb, 0, ($s.Height - 2), $s.Width, 2)
+    $lgb.Dispose()
+    $pen.Dispose()
+})
 
 $script:LblView = New-Object System.Windows.Forms.Label
 $script:LblView.Dock = 'Fill'
 $script:LblView.TextAlign = 'MiddleLeft'
-$script:LblView.Font = $fontHeader
-$script:LblView.ForeColor = $script:C.Accent
+$script:LblView.Font = New-Object System.Drawing.Font('Segoe UI Semibold', [single]12.5, [System.Drawing.FontStyle]::Regular)
+$script:LblView.ForeColor = $script:C.Text
 $script:LblView.Text = "CONSOLA CENTRAL DE OPERACIONES FORENSES"
 
 $script:BtnOpenSelected = New-FlatButton "ABRIR UBICACIÓN" 150 32
@@ -3083,13 +3539,22 @@ $header.Controls.Add($script:LblView)
 $header.Controls.Add($script:BtnOpenSelected)
 $header.Controls.Add($script:BtnExport)
 
+$lblPill = New-Object System.Windows.Forms.Label
+$lblPill.Dock = 'Right'
+$lblPill.Width = (Px 150)
+$lblPill.TextAlign = 'MiddleRight'
+$lblPill.Font = $fontSmall
+if ($isAdminNow) { $lblPill.Text = "●  ADMINISTRADOR"; $lblPill.ForeColor = $script:C.Green }
+else             { $lblPill.Text = "●  SIN PERMISOS ADMIN"; $lblPill.ForeColor = $script:C.Yellow }
+$header.Controls.Add($lblPill)
+
 # El botón EXPORTAR solo se ve cuando el panel de resultados está visible
 $script:Chips.Add_VisibleChanged({ if ($script:BtnExport) { $script:BtnExport.Visible = $script:Chips.Visible } })
 
 # --- Barra de estado inferior (estado + botones + progreso + detalle) ---
 $statusPanel = New-Object System.Windows.Forms.Panel
 $statusPanel.Dock = 'Bottom'
-$statusPanel.Height = (Px 92)
+$statusPanel.Height = (Px 100)
 $statusPanel.BackColor = $script:C.Panel
 
 $row3 = New-Object System.Windows.Forms.Panel
@@ -3115,6 +3580,15 @@ $script:BarFill = New-Object System.Windows.Forms.Panel
 $script:BarFill.Dock = 'Left'
 $script:BarFill.Width = 0
 $script:BarFill.BackColor = $script:C.Accent
+$script:BarFill.Add_Paint({ param($s, $e)
+    try {
+        if ($s.Width -gt 2 -and $s.Height -gt 1) {
+            $lg = New-Object System.Drawing.Drawing2D.LinearGradientBrush((New-Object System.Drawing.Rectangle(0, 0, $s.Width, $s.Height)), $script:C.Accent, $script:C.Pink, 0.0)
+            $e.Graphics.FillRectangle($lg, 0, 0, $s.Width, $s.Height)
+            $lg.Dispose()
+        }
+    } catch { }
+})
 $script:BarTrack.Controls.Add($script:BarFill)
 $barHolder.Controls.Add($script:BarTrack)
 $script:LblPct = New-Object System.Windows.Forms.Label
@@ -3152,6 +3626,11 @@ $row1.Controls.Add($script:LblStatus)
 $row1.Controls.Add($script:BtnCancel)
 $row1.Controls.Add($script:BtnReport)
 
+$statusPanel.Add_Paint({ param($s, $e)
+    $pen = New-Object System.Drawing.Pen($script:C.Border)
+    $e.Graphics.DrawLine($pen, 0, 0, $s.Width, 0)
+    $pen.Dispose()
+})
 $statusPanel.Controls.Add($row3)
 $statusPanel.Controls.Add($row2)
 $statusPanel.Controls.Add($row1)
@@ -3163,24 +3642,47 @@ $mainRight.Controls.Add($header)
 # --- Menú lateral ---
 $navPanel = New-Object System.Windows.Forms.Panel
 $navPanel.Dock = 'Left'
-$navPanel.Width = (Px 268)
+$navPanel.Width = (Px 280)
 $navPanel.BackColor = $script:C.Panel
 
 $navTitle = New-Object System.Windows.Forms.Panel
 $navTitle.Dock = 'Top'
-$navTitle.Height = (Px 84)
+$navTitle.Height = (Px 80)
 $lblNavT = New-Object System.Windows.Forms.Label
 $lblNavT.Text = "EL SOMBRIO IF"
-$lblNavT.Font = $fontTitle
-$lblNavT.ForeColor = $script:C.Accent
+$lblNavT.Font = New-Object System.Drawing.Font('Segoe UI Semibold', [single]13, [System.Drawing.FontStyle]::Regular)
+$lblNavT.ForeColor = $script:C.Text
 $lblNavT.AutoSize = $true
-$lblNavT.Location = New-Object System.Drawing.Point((Px 20), (Px 18))
+$lblNavT.Location = New-Object System.Drawing.Point((Px 66), (Px 16))
 $lblNavS = New-Object System.Windows.Forms.Label
-$lblNavS.Text = "FORENSIC SCANNER  ·  V79"
+$lblNavS.Text = "FORENSIC SCANNER  ·  V80"
 $lblNavS.Font = $fontSmall
 $lblNavS.ForeColor = $script:C.Muted
 $lblNavS.AutoSize = $true
-$lblNavS.Location = New-Object System.Drawing.Point((Px 22), (Px 52))
+$lblNavS.Location = New-Object System.Drawing.Point((Px 68), (Px 44))
+$logo = New-Object System.Windows.Forms.Label
+$logo.SetBounds((Px 20), (Px 20), (Px 38), (Px 38))
+$logo.BackColor = $script:C.Accent
+$logo.ForeColor = [System.Drawing.Color]::White
+$logo.Text = "S"
+$logo.TextAlign = 'MiddleCenter'
+$logo.Font = New-Object System.Drawing.Font('Segoe UI', [single]15, [System.Drawing.FontStyle]::Bold)
+$logo.Text = ""
+$logo.Add_Paint({ param($s, $e)
+    try {
+        $g = $e.Graphics
+        $g.SmoothingMode = 'AntiAlias'
+        $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+        $lg = New-Object System.Drawing.Drawing2D.LinearGradientBrush((New-Object System.Drawing.Rectangle(0, 0, $s.Width, $s.Height)), $script:C.Accent, $script:C.Pink, 45.0)
+        $g.FillRectangle($lg, 0, 0, $s.Width, $s.Height)
+        $lg.Dispose()
+        $sf = New-Object System.Drawing.StringFormat
+        $sf.Alignment = 'Center'; $sf.LineAlignment = 'Center'
+        $g.DrawString("S", $s.Font, [System.Drawing.Brushes]::White, (New-Object System.Drawing.RectangleF(0, 0, $s.Width, $s.Height)), $sf)
+        $sf.Dispose()
+    } catch { }
+})
+$navTitle.Controls.Add($logo)
 $navTitle.Controls.Add($lblNavT)
 $navTitle.Controls.Add($lblNavS)
 
@@ -3201,66 +3703,160 @@ $navFlow.AutoScroll = $true
 $navFlow.Padding = [System.Windows.Forms.Padding]::new((Px 12), (Px 4), (Px 8), 0)
 $navFlow.BackColor = $script:C.Panel
 
+$script:Tip = New-Object System.Windows.Forms.ToolTip
+$navFlowR = New-Object System.Windows.Forms.FlowLayoutPanel
+$navFlowR.Dock = 'Right'
+$navFlowR.AutoSize = $true
+$navFlowR.AutoSizeMode = 'GrowAndShrink'
+$navFlowR.FlowDirection = 'LeftToRight'
+$navFlowR.WrapContents = $false
+$navFlowR.Padding = [System.Windows.Forms.Padding]::new(0, (Px 12), (Px 10), 0)
+$navFlowR.BackColor = $script:C.Panel
+
 function Add-NavSection([string]$Text) {
-    $l = New-Object System.Windows.Forms.Label
-    $l.Text = $Text
-    $l.Font = $fontSmall
-    $l.ForeColor = $script:C.Muted
-    $l.Width = (Px 236)
-    $l.Height = (Px 30)
-    $l.TextAlign = 'BottomLeft'
-    $l.Padding = [System.Windows.Forms.Padding]::new((Px 6), 0, 0, (Px 4))
-    $l.Margin = [System.Windows.Forms.Padding]::new(0, (Px 6), 0, 0)
-    $navFlow.Controls.Add($l)
+    $sep = New-Object System.Windows.Forms.Panel
+    $sep.Width = (Px 1)
+    $sep.Height = (Px 22)
+    $sep.BackColor = $script:C.Border
+    $sep.Margin = [System.Windows.Forms.Padding]::new((Px 8), (Px 9), (Px 8), 0)
+    $navFlow.Controls.Add($sep)
 }
 
-function Add-NavButton([string]$Id, [string]$Text, $Fore = $null) {
+$script:NavMeta = @{}
+$script:FontIcon = $null
+try { $script:FontIcon = New-Object System.Drawing.Font('Segoe MDL2 Assets', [single]11, [System.Drawing.FontStyle]::Regular) } catch { }
+
+function Add-NavButton([string]$Id, [string]$Icon, [string]$Text, $Fore = $null, [string]$Tip = "", [switch]$Right) {
     $b = New-Object System.Windows.Forms.Button
-    $b.Text = $Text
+    $b.Text = ""
     $b.Tag = $Id
-    $b.Width = (Px 236)
+    $script:NavMeta[$Id] = @{ Icon = $Icon; Text = $Text }
+    if ($Text -eq "") { $b.Width = (Px 42) }
+    else { $b.Width = [System.Windows.Forms.TextRenderer]::MeasureText($Text, $script:FontBase).Width + (Px 50) }
     $b.Height = (Px 40)
-    $b.Margin = [System.Windows.Forms.Padding]::new(0, 0, 0, (Px 3))
+    $b.Margin = [System.Windows.Forms.Padding]::new(0, 0, (Px 2), 0)
     $b.FlatStyle = 'Flat'
     $b.FlatAppearance.BorderSize = 0
-    $b.FlatAppearance.MouseOverBackColor = $script:C.Hover
+    $b.FlatAppearance.MouseOverBackColor = $script:C.Panel
     $b.FlatAppearance.MouseDownBackColor = $script:C.Select
     $b.UseVisualStyleBackColor = $false
+    $b.TabStop = $false
     $b.BackColor = $script:C.Panel
     $b.ForeColor = if ($null -ne $Fore) { $Fore } else { $script:C.Text }
     $b.Font = $script:FontBase
-    $b.TextAlign = 'MiddleLeft'
-    $b.Padding = [System.Windows.Forms.Padding]::new((Px 14), 0, 0, 0)
     $b.Cursor = [System.Windows.Forms.Cursors]::Hand
+    if ($Tip) { $script:Tip.SetToolTip($b, $Tip) }
     $b.Add_Click({ param($s, $e) Invoke-NavAction ([string]$s.Tag) })
+    $b.Add_MouseEnter({ param($s, $e) $s.Invalidate() })
+    $b.Add_MouseLeave({ param($s, $e) $s.Invalidate() })
+    $b.Add_Paint({
+        param($s, $e)
+        try {
+            $g = $e.Graphics
+            $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+            $meta   = $script:NavMeta[[string]$s.Tag]
+            $active = ([string]$s.Tag -eq $script:NavActive)
+            $hover  = $s.ClientRectangle.Contains($s.PointToClient([System.Windows.Forms.Cursor]::Position))
+            if ($s.Enabled -and ($active -or $hover)) {
+                $fb = New-Object System.Drawing.SolidBrush((Merge-Color $script:C.Accent $script:C.Panel $(if ($active) { 0.16 } else { 0.08 })))
+                $g.FillRectangle($fb, 0, 0, $s.Width, $s.Height)
+                $fb.Dispose()
+                $ub = New-Object System.Drawing.Drawing2D.LinearGradientBrush((New-Object System.Drawing.Rectangle(0, ($s.Height - (Px 3)), [math]::Max(2, $s.Width), (Px 3))), $script:C.Accent, $script:C.Pink, 0.0)
+                $g.FillRectangle($ub, 0, ($s.Height - (Px $(if ($active) { 3 } else { 2 }))), $s.Width, (Px 3))
+                $ub.Dispose()
+            }
+            $fc = if ($s.Enabled) { $s.ForeColor } else { $script:C.Muted }
+            $br = New-Object System.Drawing.SolidBrush($fc)
+            $sf = New-Object System.Drawing.StringFormat
+            $sf.LineAlignment = 'Center'
+            $sf.Alignment = 'Center'
+            if ([string]$meta.Text -eq "") {
+                if ($script:FontIcon) { $g.DrawString([string]$meta.Icon, $script:FontIcon, $br, (New-Object System.Drawing.RectangleF(0, 0, $s.Width, $s.Height)), $sf) }
+            } else {
+                if ($script:FontIcon) { $g.DrawString([string]$meta.Icon, $script:FontIcon, $br, (New-Object System.Drawing.RectangleF((Px 6), 0, (Px 28), $s.Height)), $sf) }
+                $sf.Alignment = 'Near'
+                $g.DrawString([string]$meta.Text, $script:FontBase, $br, (New-Object System.Drawing.RectangleF((Px 36), 0, ($s.Width - (Px 36)), $s.Height)), $sf)
+            }
+            $br.Dispose(); $sf.Dispose()
+        } catch { }
+    })
     $script:NavButtons.Add($b)
-    $navFlow.Controls.Add($b)
+    if ($Right) { $navFlowR.Controls.Add($b) } else { $navFlow.Controls.Add($b) }
 }
 
-Add-NavSection "ANÁLISIS"
-Add-NavButton 'global'      "01   Auditoría global  (F5)" $script:C.Accent
-Add-NavButton 'live'        "02   Panel de resultados"
-Add-NavButton 'registry'    "03   Registro de sesión"
-Add-NavSection "HERRAMIENTAS"
-Add-NavButton 'doomsday'    "04   Doomsday Detector"
-Add-NavButton 'sysinformer' "05   System Informer"
-Add-NavButton 'journal'     "06   JournalTrace"
-Add-NavButton 'lilith'      "07   Lilith Services"
-Add-NavButton 'tools'       "08   Menú de herramientas"
-Add-NavSection "REVISIÓN MANUAL"
-Add-NavButton 'manual'      "09   Revisión manual (Win+R)"
-Add-NavSection "SISTEMA"
-Add-NavButton 'theme'       "10   Cambiar tema  ($($script:ThemeName))"
-Add-NavButton 'prank'       "11   hackeo" $script:C.Yellow
-Add-NavButton 'panic'       "12   Cerrar ya (cancelar todo)" $script:C.Red
-Add-NavButton 'exit'        "13   Salir" $script:C.Muted
+function Ic([int]$Code) { return [string][char]$Code }
 
+Add-NavButton 'global'      (Ic 0xE768) "Auditoría  (F5)" $script:C.Accent
+Add-NavButton 'live'        (Ic 0xE8A9) "Resultados"
+Add-NavButton 'registry'    (Ic 0xE8A5) "Registro"
+Add-NavSection ""
+Add-NavButton 'tools'       (Ic 0xE713) "Herramientas  ▾"
+Add-NavButton 'manual'      (Ic 0xE838) "Revisión manual"
+Add-NavButton 'theme'       (Ic 0xE790) "" -Tip ("Cambiar tema (" + $script:ThemeName + ")") -Right
+Add-NavButton 'prank'       (Ic 0xE7B3) "" $script:C.Yellow -Tip "Modo broma (Hackeo)" -Right
+Add-NavButton 'panic'       (Ic 0xE711) "" $script:C.Red -Tip "Cerrar ya (cancelar todo)" -Right
+Add-NavButton 'exit'        (Ic 0xE7E8) "" $script:C.Muted -Tip "Salir" -Right
+
+function Show-ToolsDropdown {
+    $m = New-Object System.Windows.Forms.ContextMenuStrip
+    $m.BackColor = $script:C.Panel2
+    $m.ForeColor = $script:C.Text
+    $m.ShowImageMargin = $false
+    foreach ($d in @(@('Doomsday Detector', 'doomsday'), @('System Informer', 'sysinformer'), @('JournalTrace', 'journal'), @('Lilith Services', 'lilith'))) {
+        $mi = New-Object System.Windows.Forms.ToolStripMenuItem
+        $mi.Text = "   " + $d[0] + "   "
+        $mi.Tag = $d[1]
+        $mi.Add_Click({ param($s, $e) Invoke-NavAction ([string]$s.Tag) })
+        [void]$m.Items.Add($mi)
+    }
+    $btn = @($script:NavButtons | Where-Object { [string]$_.Tag -eq 'tools' })[0]
+    if ($btn) { $m.Show($btn, (New-Object System.Drawing.Point(0, $btn.Height))) }
+}
+
+$navPanel.Add_Paint({ param($s, $e)
+    $pen = New-Object System.Drawing.Pen($script:C.Border)
+    $e.Graphics.DrawLine($pen, ($s.Width - 1), 0, ($s.Width - 1), $s.Height)
+    $pen.Dispose()
+})
 $navPanel.Controls.Add($navFlow)
 $navPanel.Controls.Add($navFooter)
 $navPanel.Controls.Add($navTitle)
+$navEdge = New-Object System.Windows.Forms.Panel
+$navEdge.Dock = 'Right'
+$navEdge.Width = (Px 2)
+$navEdge.BackColor = $script:C.Border
+$navEdge.Add_Paint({ param($s, $e)
+    try {
+        if ($s.Height -gt 2) {
+            $lg = New-Object System.Drawing.Drawing2D.LinearGradientBrush((New-Object System.Drawing.Rectangle(0, 0, $s.Width, $s.Height)), $script:C.Accent, $script:C.Bg, 90.0)
+            $e.Graphics.FillRectangle($lg, 0, 0, $s.Width, $s.Height)
+            $lg.Dispose()
+        }
+    } catch { }
+})
+$navPanel.Controls.Add($navEdge)
 
 $script:Form.Controls.Add($mainRight)
-$script:Form.Controls.Add($navPanel)
+$navFlow.Dock = 'Fill'
+$navFlow.FlowDirection = 'LeftToRight'
+$navFlow.WrapContents = $false
+$navFlow.AutoScroll = $false
+$navFlow.Padding = [System.Windows.Forms.Padding]::new((Px 6), (Px 12), 0, 0)
+$navTitle.Dock = 'Left'
+$navTitle.Width = (Px 236)
+$topBar = New-Object System.Windows.Forms.Panel
+$topBar.Dock = 'Top'
+$topBar.Height = (Px 64)
+$topBar.BackColor = $script:C.Panel
+$topBar.Controls.Add($navFlow)
+$topBar.Controls.Add($navFlowR)
+$topBar.Controls.Add($navTitle)
+$topBar.Add_Paint({ param($s, $e)
+    $pen = New-Object System.Drawing.Pen($script:C.Border)
+    $e.Graphics.DrawLine($pen, 0, ($s.Height - 1), $s.Width, ($s.Height - 1))
+    $pen.Dispose()
+})
+$script:Form.Controls.Add($topBar)
 
 # --- Atajos de teclado ---
 $script:Form.Add_KeyDown({
@@ -3298,7 +3894,79 @@ $script:Form.Add_FormClosing({
 $script:Form.Add_FormClosed({
     try { if ($script:HiddenConsole -ne [IntPtr]::Zero) { [void][Sombrio.WinApi]::ShowWindow($script:HiddenConsole, 5) } } catch { }
 })
+$script:Form.Add_HandleCreated({ Set-DarkTitleBar $script:Form })
 $script:Form.Add_Shown({ Move-HomeArt })
+
+# ============================================================
+# SPLASH SCREEN (pantalla de carga estética)
+# ============================================================
+try {
+    $splash = New-Object System.Windows.Forms.Form
+    $splash.FormBorderStyle = 'None'
+    $splash.StartPosition = 'CenterScreen'
+    $splash.ClientSize = New-Object System.Drawing.Size((Px 460), (Px 240))
+    $splash.BackColor = $script:C.Panel
+    $splash.TopMost = $true
+    $splash.ShowInTaskbar = $false
+    $splash.Add_Paint({
+        param($s, $e)
+        $pen = New-Object System.Drawing.Pen($script:C.Border)
+        $e.Graphics.DrawRectangle($pen, 0, 0, ($s.Width - 1), ($s.Height - 1))
+        $pen.Dispose()
+        $br = New-Object System.Drawing.Drawing2D.LinearGradientBrush((New-Object System.Drawing.Rectangle(0, 0, $s.Width, (Px 3))), $script:C.Accent, $script:C.Pink, 0.0)
+        $e.Graphics.FillRectangle($br, 0, 0, $s.Width, (Px 3))
+        $br.Dispose()
+    })
+
+    $lblSplashTitle = New-Object System.Windows.Forms.Label
+    $lblSplashTitle.Text = "EL SOMBRIO IF"
+    $lblSplashTitle.Font = $fontTitle
+    $lblSplashTitle.ForeColor = $script:C.Text
+    $lblSplashTitle.AutoSize = $false
+    $lblSplashTitle.TextAlign = 'MiddleCenter'
+    $lblSplashTitle.SetBounds(0, (Px 54), (Px 460), (Px 40))
+    $splash.Controls.Add($lblSplashTitle)
+
+    $lblSplashSub = New-Object System.Windows.Forms.Label
+    $lblSplashSub.Text = "FORENSIC SCANNER  ·  V80"
+    $lblSplashSub.Font = $fontSmall
+    $lblSplashSub.ForeColor = $script:C.Accent
+    $lblSplashSub.AutoSize = $false
+    $lblSplashSub.TextAlign = 'MiddleCenter'
+    $lblSplashSub.SetBounds(0, (Px 96), (Px 460), (Px 22))
+    $splash.Controls.Add($lblSplashSub)
+
+    $lblSplashStatus = New-Object System.Windows.Forms.Label
+    $lblSplashStatus.Text = "Iniciando..."
+    $lblSplashStatus.Font = $script:FontBase
+    $lblSplashStatus.ForeColor = $script:C.Muted
+    $lblSplashStatus.AutoSize = $false
+    $lblSplashStatus.TextAlign = 'MiddleCenter'
+    $lblSplashStatus.SetBounds(0, (Px 160), (Px 460), (Px 24))
+    $splash.Controls.Add($lblSplashStatus)
+
+    $splashBar = New-Object System.Windows.Forms.Panel
+    $splashBar.BackColor = $script:C.Panel2
+    $splashBar.SetBounds((Px 70), (Px 196), (Px 320), (Px 4))
+    $splash.Controls.Add($splashBar)
+
+    $splashFill = New-Object System.Windows.Forms.Panel
+    $splashFill.BackColor = $script:C.Accent
+    $splashFill.SetBounds(0, 0, 0, (Px 4))
+    $splashBar.Controls.Add($splashFill)
+
+    $splashMsgs = @('Cargando módulos...', 'Preparando reglas de detección...', 'Construyendo la interfaz...', 'Listo')
+    $splash.Show()
+    for ($i = 0; $i -le 100; $i += 4) {
+        $splashFill.Width = [int]($splashBar.Width * $i / 100)
+        $lblSplashStatus.Text = $splashMsgs[[math]::Min(3, [int]($i / 26))]
+        [System.Windows.Forms.Application]::DoEvents()
+        Start-Sleep -Milliseconds 25
+    }
+    Start-Sleep -Milliseconds 150
+    $splash.Close()
+    $splash.Dispose()
+} catch { }
 
 # ============================================================
 # ARRANQUE
